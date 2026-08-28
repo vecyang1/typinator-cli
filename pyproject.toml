@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "macOS CLI and AppleScript automation harness for Typinator text expander"
 readme = "README.md"
 authors = [{ name = "V" }]
-license = { text = "MIT" }
+license = { text = "AGPL-3.0" }
 requires-python = ">=3.8"
 dependencies = []
 

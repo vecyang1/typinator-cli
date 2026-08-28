@@ -109,4 +109,4 @@ python3 -m unittest discover -s tests
 
 ## License
 
-[MIT License](LICENSE) © 2026 V
+[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE) © 2026 V
