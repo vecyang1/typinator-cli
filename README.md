@@ -1,19 +1,20 @@
 # Typinator CLI (macOS Automation Harness)
 
-A robust, agent-friendly command-line interface and automation harness for **Typinator** on macOS.
+A robust, production-grade command-line interface and automation harness for **Typinator** on macOS.
 
-Enables programmatic search, rule inspection, hot in-memory expansion updates, rule creation, deletion, and safety auditing (detecting invisible Unicode control characters and cross-set duplicate trigger collisions).
+Enables programmatic rule search, live in-memory expansion updates, batch export/import, rule creation, deletion, simulation, and safety auditing (detecting invisible Unicode control characters and cross-set duplicate trigger collisions).
 
 ---
 
-## Features
+## Key Capabilities
 
-- ⚡️ **Live In-Memory Control**: Add, update, or remove Typinator rules instantly via AppleScript / Open Scripting Architecture (OSA) without restarting the application.
-- 🔍 **Global Rule Search**: Search across thousands of rules and dozens of rule sets by abbreviation, expansion text, or description with JSON/CLI output options.
+- ⚡️ **Live In-Memory Control**: Add, update, toggle, or delete Typinator rules instantly via AppleScript / Open Scripting Architecture (OSA) without restarting the application.
+- 🚀 **Sub-Second Bulk Search**: Uses native `rule table` IPC streaming to search across 4,800+ rules in **under 0.4 seconds**.
 - 🛡️ **Safety & Hygiene Audit**:
   - Automatically flags invisible Unicode characters (such as `\u2028` line separators or `\u2029` paragraph separators) that break autocompletion in browser address bars or terminals.
   - Detects duplicate abbreviation triggers across multiple enabled rule sets that cause unintentional shadowing.
   - Built-in `--fix` option to automatically sanitize invisible control characters across all active rules.
+- 💾 **Backup & Migration**: One-command JSON export and import for rule sets.
 - ⏱️ **Delay & Keystroke Support**: Full support for Typinator syntax including `{delay:1.5}`, `{tab}`, `{return}`, and key combinations (`{key:⌘↩}`).
 
 ---
@@ -39,47 +40,76 @@ chmod +x scripts/typinator_cli.py
 
 ## CLI Reference
 
-### 1. List Rule Sets
+### 1. Check Application Status
+```bash
+python3 scripts/typinator_cli.py status
+```
+
+### 2. List Rule Sets & Rule Counts
 ```bash
 python3 scripts/typinator_cli.py list-sets
 ```
 
-### 2. Search Rules
+### 3. Enable or Disable a Rule Set
 ```bash
-# Search by keyword across all rule sets
+python3 scripts/typinator_cli.py toggle-set "AI prompt" --enable
+python3 scripts/typinator_cli.py toggle-set "Old Set" --disable
+```
+
+### 4. High-Speed Rule Search
+```bash
+# Search by keyword across all rule sets (<0.4s for 4,800+ rules)
 python3 scripts/typinator_cli.py search "keyword"
 
 # Search inside a specific rule set with JSON output
 python3 scripts/typinator_cli.py search "g⌘" --set "AI prompt" --json
 ```
 
-### 3. Get Rule Details
+### 5. Get Rule Details
 ```bash
 python3 scripts/typinator_cli.py get "AI prompt" "g⌘"
 ```
 
-### 4. Update Rule Expansion
+### 6. Update Rule Expansion
 ```bash
 python3 scripts/typinator_cli.py set "AI prompt" "g⌘" --expansion "/g{delay:1.5}{tab}"
 ```
 
-### 5. Create a New Rule
+### 7. Create a New Rule
 ```bash
 python3 scripts/typinator_cli.py add "AI prompt" "ggg⌘" --expansion "/g{delay:1.5}{tab}" --desc "Quick command with 1.5s delay"
 ```
 
-### 6. Delete a Rule
+### 8. Delete a Rule
 ```bash
-python3 scripts/typinator_cli.py delete "AI prompt" "old_abbr"
+python3 scripts/typinator_cli.py delete "AI prompt" "old_abbr" --yes
 ```
 
-### 7. Run Safety Audit & Auto-Clean
+### 9. Export & Import Rules (Backup / Migration)
+```bash
+# Export all rules or a specific set
+python3 scripts/typinator_cli.py export --set "AI prompt" -o ai_prompts.json
+
+# Import rules into Typinator
+python3 scripts/typinator_cli.py import -i ai_prompts.json --overwrite
+```
+
+### 10. Run Safety Audit & Auto-Clean
 ```bash
 # Scan for invisible control characters (\u2028) and duplicate triggers
 python3 scripts/typinator_cli.py audit
 
 # Auto-fix invisible characters across all rules
 python3 scripts/typinator_cli.py audit --fix
+```
+
+### 11. Programmatic Expansion & Quick Search
+```bash
+# Trigger expansion of a string programmatically
+python3 scripts/typinator_cli.py expand "ggg⌘"
+
+# Open Typinator quick search palette
+python3 scripts/typinator_cli.py quick-search "git"
 ```
 
 ---
@@ -99,10 +129,10 @@ python3 scripts/typinator_cli.py audit --fix
 
 ## Testing
 
-Run unit tests via standard Python unittest:
+Run the full unit and live integration test suite:
 
 ```bash
-python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests -v
 ```
 
 ---

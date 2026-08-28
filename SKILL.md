@@ -1,6 +1,6 @@
 ---
 name: typinator-manager
-description: Use when an agent needs to inspect, search, add, update, delete, or audit Typinator text expansion snippets, rules, keystrokes, delay markers, and rule sets on macOS via native AppleScript automation.
+description: Use when an agent needs to inspect, search, add, update, delete, export, import, or audit Typinator text expansion snippets, rules, keystrokes, delay markers, and rule sets on macOS via native AppleScript automation.
 ---
 
 # typinator-manager
@@ -12,9 +12,10 @@ description: Use when an agent needs to inspect, search, add, update, delete, or
 - **Author:** V
 - **Created:** 2026-08-28
 - **Updated:** 2026-08-28
+- **Version:** 1.1.0
 - **Review status:** `reviewed`
 
-Manage, configure, query, and audit Typinator expansion rules on macOS programmatically without manual UI interaction.
+Manage, configure, query, export, import, and audit Typinator expansion rules on macOS programmatically without manual UI interaction.
 
 ---
 
@@ -23,10 +24,13 @@ Manage, configure, query, and audit Typinator expansion rules on macOS programma
 All operations are unified under the bundled CLI script:
 
 ```bash
-# List all rule sets
+# Check status
+python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py status
+
+# List all rule sets and counts
 python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py list-sets
 
-# Search rules across all sets
+# Sub-second high-speed search across all sets (<0.4s for 4,800+ rules)
 python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py search "keyword"
 
 # Search rules in a specific set (outputs JSON if needed)
@@ -41,8 +45,15 @@ python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py add "AI prom
 # Update an existing rule's expansion
 python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py set "AI prompt" "g⌘" --expansion "/g{delay:1.5}{tab}"
 
+# Toggle rule set enable/disable
+python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py toggle-set "AI prompt" --enable
+
+# Export & import rule sets
+python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py export --set "AI prompt" -o backup.json
+python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py import -i backup.json --overwrite
+
 # Delete a rule
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py delete "AI prompt" "unwanted_abbr"
+python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py delete "AI prompt" "unwanted_abbr" --yes
 
 # Audit for invisible control characters (\u2028 line breaks) and duplicate trigger collisions
 python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py audit
@@ -57,6 +68,7 @@ python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py audit --fix
 
 * [Marker Syntax & Keystroke Reference](references/syntax_and_markers.md): Delay markers (`{delay:n}`), keystrokes (`{tab}`, `{key:...}`), inline scripts, and formatting gotchas.
 * [AppleScript OSA API](references/applescript_api.md): Typinator scripting classes, properties, and dictionary methods.
+* [Changelog](CHANGELOG.md): Version history and improvements.
 
 ---
 
