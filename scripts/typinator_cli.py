@@ -111,23 +111,25 @@ def list_sets() -> List[Dict[str, Any]]:
     tell application "Typinator"
         set sNames to name of every rule set
         set sEnabled to enabled of every rule set
-        set outList to {}
+        set outStr to ""
         repeat with i from 1 to count of sNames
             set aSet to item i of rule sets
             set rCount to 0
             try
                 set rCount to count of rules of aSet
             end try
-            set end of outList to (item i of sNames) & "\t" & (item i of sEnabled as text) & "\t" & (rCount as text)
+            set outStr to outStr & (item i of sNames) & "\t" & (item i of sEnabled as text) & "\t" & (rCount as text) & "===TYPINATOR_ITEM_DELIMITER==="
         end repeat
-        return outList
+        return outStr
     end tell
     '''
     raw = run_applescript(sc)
     results = []
     if not raw:
         return results
-    for item in raw.split(", "):
+    for item in raw.split("===TYPINATOR_ITEM_DELIMITER==="):
+        if not item.strip():
+            continue
         parts = item.split("\t")
         if len(parts) >= 3:
             results.append({
@@ -162,7 +164,7 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
                 set aSet to (first rule set whose name is "{escape_as(set_name)}")
                 set sEn to enabled of aSet
                 set t to rule table of aSet
-                return "{escape_as(set_name)}" & "===SET===" & (sEn as text) & "===ENABLED===" & t
+                return "===TYPINATOR_SET_DELIMITER===" & "{escape_as(set_name)}" & "===SET===" & (sEn as text) & "===ENABLED===" & t
             on error
                 return ""
             end try
@@ -173,16 +175,16 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
         tell application "Typinator"
             set sNames to name of every rule set
             set sEnabled to enabled of every rule set
-            set outList to {}
+            set outStr to ""
             repeat with i from 1 to count of sNames
                 set sName to item i of sNames
                 set sEn to item i of sEnabled
                 try
                     set t to rule table of (item i of rule sets)
-                    set end of outList to sName & "===SET===" & (sEn as text) & "===ENABLED===" & t
+                    set outStr to outStr & "===TYPINATOR_SET_DELIMITER===" & sName & "===SET===" & (sEn as text) & "===ENABLED===" & t
                 end try
             end repeat
-            return outList
+            return outStr
         end tell
         '''
 
@@ -192,7 +194,7 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
         return results
 
     q_lower = query.lower()
-    set_blocks = raw.split(", ") if not set_name else [raw]
+    set_blocks = raw.split("===TYPINATOR_SET_DELIMITER===")
 
     for block in set_blocks:
         if "===SET===" not in block or "===ENABLED===" not in block:
