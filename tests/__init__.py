@@ -1,0 +1,1 @@
+"""Typinator CLI test package."""
