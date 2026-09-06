@@ -5,6 +5,14 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-06
+
+### Added
+- **Global Cross-Set Collision Detection in Set Auditing**: `typinator audit --set <name>` now indexes all active rule sets globally to detect cross-set abbreviation shadowing without silent blind spots.
+- **Nested Reference Validation Engine**: `{"abbr"}` dynamic syntax parser detecting dangling (missing target), ambiguous (multi-set collision), and circular self-references.
+- **CLI Preflight Warnings**: `typinator add` and `typinator set` automatically validate nested reference integrity and print warnings to `stderr` before mutation.
+- **Expanded Unit Test Suite**: Added 4 new automated unit tests in `tests/test_audit.py` (17 tests total passing).
+
 ## [1.1.1] - 2026-09-06
 
 ### Documentation

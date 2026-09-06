@@ -8,13 +8,16 @@ and full AppleScript / Open Scripting Architecture (OSA) integration.
 
 import sys
 import os
+import re
 import json
 import argparse
 import subprocess
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
+
+NESTED_REFERENCE_PATTERN = re.compile(r'\{"([^"\n]+)"\}')
 
 INVISIBLE_CHARS_MAP = {
     '\u2028': 'LINE_SEPARATOR (\\u2028)',
@@ -377,30 +380,89 @@ def import_rules(data: Dict[str, Any], target_set: Optional[str] = None, overwri
     return {"created": created, "updated": updated, "skipped": skipped}
 
 
+def validate_nested_references(expansion: str, current_abbr: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Validate any nested references in expansion text against active rule sets."""
+    warnings = []
+    matches = NESTED_REFERENCE_PATTERN.findall(expansion)
+    if not matches:
+        return warnings
+
+    global_rules = search_rules()
+    global_abbr_to_sets: Dict[str, List[str]] = {}
+    for r in global_rules:
+        if r["set_enabled"]:
+            global_abbr_to_sets.setdefault(r["abbreviation"], []).append(r["set"])
+
+    for ref_abbr in matches:
+        if current_abbr and ref_abbr == current_abbr:
+            warnings.append({
+                "type": "circular_nested_reference",
+                "ref": ref_abbr,
+                "message": f"Circular reference: rule '{current_abbr}' references itself."
+            })
+        elif ref_abbr not in global_abbr_to_sets:
+            warnings.append({
+                "type": "dangling_nested_reference",
+                "ref": ref_abbr,
+                "message": f"Referenced abbreviation '{ref_abbr}' not found in any active rule set."
+            })
+        elif len(global_abbr_to_sets[ref_abbr]) > 1:
+            sets = global_abbr_to_sets[ref_abbr]
+            warnings.append({
+                "type": "ambiguous_nested_reference",
+                "ref": ref_abbr,
+                "active_in_sets": sets,
+                "message": f"Referenced abbreviation '{ref_abbr}' exists in multiple active sets: {sets}. Typinator will evaluate the highest-ranked set."
+            })
+    return warnings
+
+
 def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Audit rules for:
-    1. Invisible / rogue Unicode control characters (\u2028 line separator, \u2029, \ufeff, \u200b).
-    2. Duplicate abbreviation triggers across enabled rule sets.
+    1. Invisible / rogue Unicode control characters (\\u2028, \\u2029, \\ufeff, \\u200b).
+    2. Duplicate abbreviation triggers across enabled rule sets (cross-set global collision detection).
+    3. Nested reference integrity ({"abbr"}): dangling, ambiguous (multi-set shadow), or circular references.
     """
-    all_rules = search_rules(set_name=set_name)
-    issues = []
-    seen_abbrs: Dict[str, List[str]] = {}
-    fixed_count = 0
-
-    for r in all_rules:
-        # Check active set collisions
+    global_rules = search_rules()
+    global_abbr_to_sets: Dict[str, List[str]] = {}
+    for r in global_rules:
         if r["set_enabled"]:
-            seen_abbrs.setdefault(r["abbreviation"], []).append(r["set"])
+            global_abbr_to_sets.setdefault(r["abbreviation"], []).append(r["set"])
 
-        # Check invisible characters
+    if set_name:
+        target_rules = [r for r in global_rules if r["set"] == set_name]
+    else:
+        target_rules = global_rules
+
+    issues = []
+    fixed_count = 0
+    checked_collision_abbrs = set()
+
+    for r in target_rules:
+        abbr = r["abbreviation"]
         exp = r["expansion"]
+        s_name = r["set"]
+
+        # 1. Cross-set duplicate trigger collisions
+        if r["set_enabled"] and abbr not in checked_collision_abbrs:
+            active_sets = global_abbr_to_sets.get(abbr, [])
+            if len(active_sets) > 1:
+                checked_collision_abbrs.add(abbr)
+                issues.append({
+                    "type": "duplicate_trigger_collision",
+                    "abbreviation": abbr,
+                    "active_in_sets": active_sets,
+                    "note": "The higher ranked set in Typinator will shadow the lower sets"
+                })
+
+        # 2. Check invisible control characters
         found_inv = [desc for ch, desc in INVISIBLE_CHARS_MAP.items() if ch in exp]
         if found_inv:
             issue_item = {
                 "type": "invisible_character",
-                "set": r["set"],
-                "abbreviation": r["abbreviation"],
+                "set": s_name,
+                "abbreviation": abbr,
                 "detected": found_inv,
                 "raw_expansion": repr(exp)
             }
@@ -409,21 +471,40 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
                 clean_exp = exp
                 for ch in INVISIBLE_CHARS_MAP:
                     clean_exp = clean_exp.replace(ch, "\n" if ch in ['\u2028', '\u2029'] else "")
-                set_rule_expansion(r["set"], r["abbreviation"], expansion=clean_exp)
+                set_rule_expansion(s_name, abbr, expansion=clean_exp)
                 fixed_count += 1
 
-    # Filter duplicate trigger collisions across different sets
-    collisions = {k: v for k, v in seen_abbrs.items() if len(v) > 1}
-    for abbr, sets in collisions.items():
-        issues.append({
-            "type": "duplicate_trigger_collision",
-            "abbreviation": abbr,
-            "active_in_sets": sets,
-            "note": "The higher ranked set in Typinator will shadow the lower sets"
-        })
+        # 3. Check nested reference integrity ({"..."})
+        for match in NESTED_REFERENCE_PATTERN.finditer(exp):
+            ref_abbr = match.group(1)
+            if ref_abbr == abbr:
+                issues.append({
+                    "type": "circular_nested_reference",
+                    "set": s_name,
+                    "abbreviation": abbr,
+                    "target_abbreviation": ref_abbr,
+                    "note": "Rule references itself directly, creating an infinite loop"
+                })
+            elif ref_abbr not in global_abbr_to_sets:
+                issues.append({
+                    "type": "dangling_nested_reference",
+                    "set": s_name,
+                    "abbreviation": abbr,
+                    "target_abbreviation": ref_abbr,
+                    "note": f"Referenced abbreviation '{ref_abbr}' does not exist in any active rule set"
+                })
+            elif len(global_abbr_to_sets[ref_abbr]) > 1:
+                issues.append({
+                    "type": "ambiguous_nested_reference",
+                    "set": s_name,
+                    "abbreviation": abbr,
+                    "target_abbreviation": ref_abbr,
+                    "active_in_sets": global_abbr_to_sets[ref_abbr],
+                    "note": f"Referenced abbreviation '{ref_abbr}' exists in multiple active sets: {global_abbr_to_sets[ref_abbr]}. Higher ranked set will shadow lower sets."
+                })
 
     return {
-        "total_rules_scanned": len(all_rules),
+        "total_rules_scanned": len(target_rules),
         "issues_found": len(issues),
         "fixed": fixed_count,
         "details": issues
@@ -606,6 +687,10 @@ def main():
                 print(f"Unique ID:        {rule['id']}")
 
         elif args.command == "set":
+            if args.expansion:
+                warns = validate_nested_references(args.expansion, current_abbr=args.abbreviation)
+                for w in warns:
+                    print(f"⚠️ Warning ({w['type']}): {w['message']}", file=sys.stderr)
             ok = set_rule_expansion(
                 args.set,
                 args.abbreviation,
@@ -620,6 +705,10 @@ def main():
                 sys.exit(1)
 
         elif args.command == "add":
+            if args.expansion:
+                warns = validate_nested_references(args.expansion, current_abbr=args.abbreviation)
+                for w in warns:
+                    print(f"⚠️ Warning ({w['type']}): {w['message']}", file=sys.stderr)
             uid = add_rule(
                 args.set,
                 args.abbreviation,
@@ -665,10 +754,17 @@ def main():
                 print(f"Fixed Items:         {res['fixed']}")
                 print("-" * 52)
                 for d in res["details"]:
-                    if d["type"] == "invisible_character":
+                    t = d["type"]
+                    if t == "invisible_character":
                         print(f"⚠️ Invisible Character in [{d['set']}] '{d['abbreviation']}': {d['detected']}")
-                    elif d["type"] == "duplicate_trigger_collision":
+                    elif t == "duplicate_trigger_collision":
                         print(f"⚠️ Duplicate Trigger '{d['abbreviation']}' across active sets: {d['active_in_sets']}")
+                    elif t == "dangling_nested_reference":
+                        print(f"⚠️ Dangling Nested Reference in [{d['set']}] '{d['abbreviation']}': target '{d['target_abbreviation']}' not found in any active set")
+                    elif t == "ambiguous_nested_reference":
+                        print(f"⚠️ Ambiguous Nested Reference in [{d['set']}] '{d['abbreviation']}': target '{d['target_abbreviation']}' in multiple sets {d['active_in_sets']}")
+                    elif t == "circular_nested_reference":
+                        print(f"⚠️ Circular Nested Reference in [{d['set']}] '{d['abbreviation']}': references itself '{d['target_abbreviation']}'")
                 if res["issues_found"] == 0:
                     print("✨ All rules are clean! Zero anomalies detected.")
 
