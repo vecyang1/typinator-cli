@@ -53,5 +53,34 @@ class TestTypinatorCli(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir)
 
+    def test_bin_wrapper_audit_json(self):
+        import subprocess, json
+        bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin", "typinator"))
+        res = subprocess.run([bin_path, "audit", "--set", "AI prompt", "--json"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        data = json.loads(res.stdout)
+        self.assertIn("total_rules_scanned", data)
+        self.assertIn("issues_found", data)
+        self.assertIn("details", data)
+
+    def test_bin_wrapper_debug_json(self):
+        import subprocess, json
+        bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin", "typinator"))
+        # 1. Inspection mode for live active rule
+        res = subprocess.run([bin_path, "debug", "im⇧", "--json"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        data = json.loads(res.stdout)
+        self.assertEqual(data["mode"], "inspection")
+        self.assertTrue(data["exists"])
+        self.assertGreater(len(data["rules"]), 0)
+
+        # 2. Preflight simulation mode for non-existent rule
+        res_preflight = subprocess.run([bin_path, "debug", "test_simulated_abbr_xyz", "--json"], capture_output=True, text=True)
+        self.assertEqual(res_preflight.returncode, 0)
+        data_preflight = json.loads(res_preflight.stdout)
+        self.assertEqual(data_preflight["mode"], "preflight_simulation")
+        self.assertFalse(data_preflight["exists"])
+
+
 if __name__ == '__main__':
     unittest.main()
