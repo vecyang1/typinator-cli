@@ -109,4 +109,19 @@ Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use st
 3. **The Keystroke Marker (`{tab}`)**:
    - Converts the filtered candidate into the native IDE badge/pill `[⏱️ goal]`.
 4. **Suffix Convention (`⇧` for Prompts/Commands, `⌘` for URLs)**:
-   - Standardize on `g⇧` for AI goal execution, reserving `g⌘` for URLs (e.g. Grok) to avoid cross-set trigger collisions.
+   - Standardize on `...⇧` for AI goal execution and prompts, reserving `...⌘` for URLs (e.g. Grok) to avoid cross-set trigger collisions.
+
+### Standardized AI Slash Command Matrix (Active in `AI prompt`):
+
+| Abbr | Expansion | Token / Command | Description |
+|---|---|---|---|
+| `g⇧` | `/goal{delay:0.25}{tab}` | `[⏱️ goal]` | Background long-running goal loop |
+| `br⇧` | `/browser{delay:0.25}{tab}` | `[browser]` | Web browser automation & search |
+| `glm⇧` | `/grill-me{delay:0.25}{tab}` | `[grill-me]` | Interactive critical design interview |
+| `sc⇧` | `/schedule{delay:0.25}{tab}` | `[schedule]` | One-shot timers or recurring cron jobs |
+| `bo⇧` | `/boost{delay:0.25}{tab}` | `[boost]` | Multi-perspective deep reasoning mode |
+| `lr⇧` | `/learn{delay:0.25}{tab}` | `[learn]` | Persist workflow behaviors & patterns |
+| `tw⇧` | `/teamwork-preview{delay:0.25}{tab}` | `[teamwork-preview]` | Multi-agent collaboration preview |
+| `gf⇧` | `/graphify{delay:0.25}{tab}` | `[graphify]` | Codebase knowledge graph analysis |
+| `cp⇧` | `/compact{delay:0.25}{tab}` | `[compact]` | Context window compaction |
+| `cl⇧` | `/clear{delay:0.25}{tab}` | `/clear` | Clear session / conversation history |
