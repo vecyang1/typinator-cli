@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# Typinator CLI wrapper
+# Typinator CLI wrapper - resolves symlinks canonically
 set -e
-DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+
 exec python3 "$DIR/scripts/typinator_cli.py" "$@"

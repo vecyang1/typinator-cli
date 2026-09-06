@@ -40,5 +40,18 @@ class TestTypinatorCli(unittest.TestCase):
         self.assertEqual(data["status"], "running")
         self.assertGreater(data["total_rules"], 0)
 
+    def test_bin_symlink_resolution(self):
+        import subprocess, tempfile, shutil
+        bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin", "typinator"))
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            symlink_path = os.path.join(tmp_dir, "typinator-symlink-test")
+            os.symlink(bin_path, symlink_path)
+            res = subprocess.run([symlink_path, "--help"], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0)
+            self.assertIn("Typinator CLI", res.stdout)
+        finally:
+            shutil.rmtree(tmp_dir)
+
 if __name__ == '__main__':
     unittest.main()
