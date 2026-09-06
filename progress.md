@@ -18,3 +18,11 @@ meaningful state changes. Do not turn `VAULT.md` into a session diary.
 - Synced global skill `~/.agents/skills/typinator-manager/SKILL.md` to reference the canonical source.
 - Added live rules `;;c` ➔ `⌘` and `;;s` ➔ `⇧` into Typinator `Shortcut / Url` set and verified against AppleScript live DB.
 - Skills used: `init-vault-method`, `typinator-manager`.
+## 2026-09-06 07:44
+
+- Published repository to GitHub under GNU AGPL-3.0: `https://github.com/vecyang1/typinator-cli`.
+- Registered & fully populated product entry in Notion `Product[OS]` database (Page ID: `3cae1b43-2393-81e6-8c81-c3bf32691292`) with Shipped status, five-star rating, and full technical documentation.
+- Configured Option key symbol rules: `;;a` ➔ `⌥` (SSOT) and `;;o` ➔ `{";;a"}` (dynamic nested expansion) to avoid multi-source rot.
+- Added comprehensive unit and live E2E tests (13/13 passing in test suite) covering nested expansion and symlink traversal.
+- Documented nested snippet syntax in `references/syntax_and_markers.md`.
+
