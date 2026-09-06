@@ -31,5 +31,14 @@ meaningful state changes. Do not turn `VAULT.md` into a session diary.
 - Implemented and verified Typinator dynamic inclusion grammar (`{"..."}`) across 23 rules in 5 sets (`Tel & Emails & Adress`, `Signiture`, `AI prompt`, `AI`, `Urls(creator)`).
 - Cold-backed up all 5 sets to local JSON artifacts before migration.
 - Verified live AppleScript state, event simulation expansions, and safety audits (0 issues, 0 loops). All 13 automated tests green.
+## 2026-09-06 07:56
+
+- Hardened `scripts/typinator_cli.py` to v1.2.0:
+  - Eliminated cross-set collision blind spot: `typinator audit --set <name>` now indexes active sets globally so localized audits still catch cross-set collisions (e.g. `rp⇧` in `Urls(AI)` vs `Urls(creator)`).
+  - Built nested reference validation (`validate_nested_references`): flags dangling, ambiguous, and circular `{"..."}` references with preflight warnings in CLI `add` and `set`.
+  - Restored Repurpose rules in `Urls(creator)` (`rpa⌘`, `rpcn⌘`, `rpt⌘`) to clean standalone URLs, preventing collision with `Urls(AI)`'s `rp⇧` (Replient AI dashboard).
+  - Expanded unit test suite to 17 tests (all passing).
+  - Synced documentation across `CHANGELOG.md`, `references/syntax_and_markers.md`, and `SKILL.md`.
+
 
 

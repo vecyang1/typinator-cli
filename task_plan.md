@@ -14,6 +14,7 @@
 | T-003 | completed | 2026-09-06 | 2026-09-06 | Push to GitHub as AGPL-3.0 repo | agent | Pushed commits to origin/main | `https://github.com/vecyang1/typinator-cli` |
 | T-004 | completed | 2026-09-06 | 2026-09-06 | Sync with Notion Product[OS] database | agent | Updated page properties and markdown body | Notion page `3cae1b43-2393-81e6-8c81-c3bf32691292` |
 | T-006 | completed | 2026-09-06 | 2026-09-06 | Configure ;;o SSOT alias pointing to ;;a | agent | Verified nested snippet grammar {"abbreviation"} | `typinator get "Shortcut / Url" ";;o"` -> `{\";;a\"}` |
+| T-007 | completed | 2026-09-06 | 2026-09-06 | Harden audit with global cross-set collision & nested validation (v1.2.0) | agent | 17 tests passed, cross-set blind spot eliminated | `CHANGELOG.md`, `tests/test_audit.py` |
 
 ## Backlog
 

@@ -82,4 +82,9 @@ Typinator natively supports referencing another abbreviation dynamically:
 1. **Prevent Source Rot**: When aliases or multiple abbreviations should yield the same output, establish one as the canonical source of truth (SSOT) and point other triggers to it via `{"<primary_abbr>"}`.
 2. **Pre-Processing Execution**: Abbreviation substitutions occur *before* other nested markers are processed.
 3. **No Circular Loops**: Ensure references are directed acyclic graphs (DAGs) to prevent recursion loops.
+4. **Cross-Set Shadowing Awareness (Crucial)**:
+   - When referencing `{"abbr"}`, Typinator resolves the abbreviation using its global set rank order (top-to-bottom in the UI).
+   - If `abbr` exists in multiple enabled rule sets (e.g. `rp⇧` in both `Urls(AI)` and `Urls(creator)`), Typinator **silently** selects the higher-ranked set's expansion.
+   - **Agent Defense Rule**: Before configuring a dynamic alias `{"target"}`, always run `typinator audit` or check `global_abbr_to_sets` to ensure `target` is unique across all active sets. Never audit sets in isolation with `--set` without verifying global uniqueness.
+
 
