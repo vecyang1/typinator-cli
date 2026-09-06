@@ -5,6 +5,17 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-09-07
+
+### Added
+- **Slash Command & Expansion Debugging**: `typinator debug` now supports inspecting slash commands and expansions directly (e.g. `typinator debug /boost`, `typinator debug /goal`), diagnosing underlying triggers across all sets (e.g. `bo⇧` in `AI prompt` and `bs⇧` in `Urls(browswers)`) and cross-referencing identical expansions.
+- **Preflight Existing Trigger Warnings in `typinator add`**: Alerts when an abbreviation already exists in active sets before rule creation.
+
+### Fixed
+- **Set Priority Accuracy in Single-Set Search**: Fixed `search_rules` when filtering by `set_name` returning hardcoded `set_priority: 0`; now resolves the set's true 0-indexed position in Typinator's active hierarchy.
+- **Robust Delimiter Parsing in `get_rule`**: Replaced fragile `\t` field delimiter with `===TYPINATOR_FIELD_DELIMITER===` and guarded integer parsing, preventing data shifting or crashes when expansions/descriptions contain literal tabs.
+- **Expansion Truncation on Tab Delimiters**: Fixed `search_rules` truncating expansion text after tabs by preserving all tab-delimited fragments.
+
 ## [1.3.0] - 2026-09-06
 
 ### Added

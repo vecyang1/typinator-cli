@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "typinator-cli"
-version = "1.3.0"
+version = "1.3.1"
 description = "macOS CLI and AppleScript automation harness for Typinator text expander"
 readme = "README.md"
 authors = [{ name = "V" }]

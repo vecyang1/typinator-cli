@@ -119,7 +119,7 @@ Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use st
 | `br⇧` | `/browser{delay:0.25}{tab}` | `[browser]` | Web browser automation & search |
 | `glm⇧` | `/grill-me{delay:0.25}{tab}` | `[grill-me]` | Interactive critical design interview |
 | `sc⇧` | `/schedule{delay:0.25}{tab}` | `[schedule]` | One-shot timers or recurring cron jobs |
-| `bo⇧` | `/boost{delay:0.25}{tab}` | `[boost]` | Multi-perspective deep reasoning mode |
+| `bo⇧` / `bs⇧` | `/boost{delay:0.25}{tab}` | `[boost]` | Multi-perspective deep reasoning mode (`bo⇧` in `AI prompt`, `bs⇧` in `Urls(browswers)`) |
 | `lr⇧` | `/learn{delay:0.25}{tab}` | `[learn]` | Persist workflow behaviors & patterns |
 | `tw⇧` | `/teamwork-preview{delay:0.25}{tab}` | `[teamwork-preview]` | Multi-agent collaboration preview |
 | `gf⇧` | `/graphify{delay:0.25}{tab}` | `[graphify]` | Codebase knowledge graph analysis |
@@ -157,15 +157,21 @@ Typinator treats punctuation, spaces, tabs, and non-alphanumeric symbols (such a
 Before creating or updating rules, use the CLI's Trie-based inspector:
 
 ```bash
+# Debug by slash command or expansion token (e.g. /boost, /goal, /image-gen-with-api)
+typinator debug /boost
+typinator debug /goal
+
 # Deep inspection of an existing rule's conflict status
-typinator debug "img⇧"
+typinator debug "im⇧"
+typinator debug "g⇧"
 
 # Preflight simulation before adding a new rule
-typinator debug "im⇧"
+typinator debug "img⇧"
 ```
 
 The tool prints:
-- `🔴 DISABLED` status with exact shadowing cause and set priority ranking.
+- `🟢 ACTIVE` or `🔴 DISABLED` status with exact shadowing cause and set priority ranking.
+- Related rules across active sets sharing identical expansions (e.g. `bo⇧` and `bs⇧` for `/boost`).
 - Actionable resolution strategies (prefix change, whole-word adjustment, or set reordering).
-- Preflight warning if adding a trigger would disable lower-priority rules.
+- Preflight simulation warning if adding a trigger would be shadowed or disable lower-priority rules.
 

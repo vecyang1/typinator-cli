@@ -11,8 +11,8 @@ description: Use when an agent needs to inspect, search, add, update, delete, ex
 - **Source:** `/Users/vecsatfoxmailcom/Documents/A-coding/26.09.06-typinator-cli`
 - **Author:** V
 - **Created:** 2026-08-28
-- **Updated:** 2026-09-06
-- **Version:** 1.3.0
+- **Updated:** 2026-09-07
+- **Version:** 1.3.1
 - **Review status:** `reviewed`
 
 Manage, configure, query, export, import, and audit Typinator expansion rules on macOS programmatically without manual UI interaction.
@@ -39,7 +39,9 @@ typinator search "g⌘" --set "AI prompt" --json
 # Get details of a single rule
 typinator get "AI prompt" "g⌘"
 
-# Deeply inspect trigger for prefix collisions, shadowing, and preflight safety
+# Deeply inspect trigger or slash command for prefix collisions, shadowing, and preflight safety
+typinator debug /boost
+typinator debug /goal
 typinator debug "im⇧"
 typinator debug "img"
 
