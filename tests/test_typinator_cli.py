@@ -22,5 +22,23 @@ class TestTypinatorCli(unittest.TestCase):
         raw = '/g{delay:1.5}{tab}'
         self.assertEqual(escape_as(raw), '/g{delay:1.5}{tab}')
 
+    def test_bin_wrapper_help(self):
+        import subprocess
+        bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin", "typinator"))
+        res = subprocess.run([bin_path, "--help"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("Typinator CLI", res.stdout)
+        self.assertIn("subcommands", res.stdout)
+
+    def test_bin_wrapper_status_json(self):
+        import subprocess, json
+        bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin", "typinator"))
+        res = subprocess.run([bin_path, "status", "--json"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        data = json.loads(res.stdout)
+        self.assertIn("status", data)
+        self.assertEqual(data["status"], "running")
+        self.assertGreater(data["total_rules"], 0)
+
 if __name__ == '__main__':
     unittest.main()

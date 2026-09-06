@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Typinator CLI wrapper
+set -e
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+exec python3 "$DIR/scripts/typinator_cli.py" "$@"

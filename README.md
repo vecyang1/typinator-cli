@@ -1,5 +1,10 @@
 # Typinator CLI (macOS Automation Harness)
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Platform: macOS](https://img.shields.io/badge/Platform-macOS-lightgrey.svg)](https://www.ergonis.com/products/typinator/)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-green.svg)](https://www.python.org/)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg)](pyproject.toml)
+
 A robust, production-grade command-line interface and automation harness for **Typinator** on macOS.
 
 Enables programmatic rule search, live in-memory expansion updates, batch export/import, rule creation, deletion, simulation, and safety auditing (detecting invisible Unicode control characters and cross-set duplicate trigger collisions).
@@ -16,6 +21,7 @@ Enables programmatic rule search, live in-memory expansion updates, batch export
   - Built-in `--fix` option to automatically sanitize invisible control characters across all active rules.
 - 💾 **Backup & Migration**: One-command JSON export and import for rule sets.
 - ⏱️ **Delay & Keystroke Support**: Full support for Typinator syntax including `{delay:1.5}`, `{tab}`, `{return}`, and key combinations (`{key:⌘↩}`).
+- 📦 **Zero External Dependencies**: Implemented strictly using Python's standard library.
 
 ---
 
@@ -23,18 +29,28 @@ Enables programmatic rule search, live in-memory expansion updates, batch export
 
 ### Prerequisites
 * macOS with **Typinator** installed and running.
-* Python 3.8+ (uses standard library only — zero external dependencies).
+* Python 3.8+ (standard library only).
 
-### Usage
-
+### Option 1: Global Pip / Pipx Install
 ```bash
-# Clone the repository
 git clone https://github.com/vecyang1/typinator-cli.git
 cd typinator-cli
-
-# Make the CLI executable
-chmod +x scripts/typinator_cli.py
+pip install .
+# Or with pipx:
+pipx install .
 ```
+
+### Option 2: Direct Execution / Symlink
+```bash
+git clone https://github.com/vecyang1/typinator-cli.git
+cd typinator-cli
+chmod +x bin/typinator scripts/typinator_cli.py
+
+# Optional: Add to PATH
+ln -sf "$(pwd)/bin/typinator" ~/.local/bin/typinator
+ln -sf "$(pwd)/bin/typinator" ~/.local/bin/typinator-cli
+```
+
 
 ---
 
