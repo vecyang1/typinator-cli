@@ -46,7 +46,7 @@ Typinator compiles and runs inline scripts during expansion:
    - **Fix**: Run `python3 scripts/typinator_cli.py audit --fix` to sanitize expansions.
 
 2. **Trailing Space before Delay**:
-   - For web/browser address bars or slash commands (e.g. `/g`), avoid putting a space before `{delay:...}` (i.e. use `/g{delay:1.5}{tab}` rather than `/g {delay:1.5}{tab}`), otherwise the address bar treats it as a search query string rather than a keyword shortcut.
+   - For web/browser address bars or slash commands (e.g. `/goal`), avoid putting a space before `{delay:...}` (i.e. use `/goal{delay:0.25}{tab}` rather than `/goal {delay:0.25}{tab}`), otherwise the address bar or input component treats it as raw text/search string rather than triggering autocomplete.
 
 3. **Rule Set Collisions**:
    - If two active rule sets have the same abbreviation trigger (e.g. `g⌘` in both `AI prompt` and `Urls(AI)`), Typinator resolves top-to-bottom based on the rule set list order.
@@ -87,4 +87,26 @@ Typinator natively supports referencing another abbreviation dynamically:
    - If `abbr` exists in multiple enabled rule sets (e.g. `rp⇧` in both `Urls(AI)` and `Urls(creator)`), Typinator **silently** selects the higher-ranked set's expansion.
    - **Agent Defense Rule**: Before configuring a dynamic alias `{"target"}`, always run `typinator audit` or check `global_abbr_to_sets` to ensure `target` is unique across all active sets. Never audit sets in isolation with `--set` without verifying global uniqueness.
 
+---
 
+## 7. AI Slash Command & Chip Autocomplete Strategy (Antigravity / Gemini / Codec)
+
+Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use structured slash-command "chips" or "pills" (e.g. `[⏱️ goal]`) rather than raw text.
+
+### The Golden Formula:
+```text
+/<command>{delay:0.25}{tab}
+```
+
+### Key Invariants:
+1. **Full Command Name (`/goal` vs `/g` or `/go`)**:
+   - Typing only `/g` is ambiguous if the workspace or platform offers multiple commands (e.g. `/goal` and `/grill-me`).
+   - Typing the full name `/goal` uniquely resolves the match across all AI IDEs and prevents dropdown mis-selection.
+2. **The 250ms Delay Window (`{delay:0.25}`)**:
+   - Typing `/goal` triggers asynchronous React/Vue UI state transitions to mount and filter the command menu.
+   - Sending `{tab}` with 0ms delay causes a race condition: the browser executes native Tab navigation (blurring input or focusing UI buttons) before the autocomplete listener is ready.
+   - `{delay:0.25}` gives ~15-20 frames for the UI thread to mount and select the item while remaining imperceptibly instantaneous to the user.
+3. **The Keystroke Marker (`{tab}`)**:
+   - Converts the filtered candidate into the native IDE badge/pill `[⏱️ goal]`.
+4. **Suffix Convention (`⇧` for Prompts/Commands, `⌘` for URLs)**:
+   - Standardize on `g⇧` for AI goal execution, reserving `g⌘` for URLs (e.g. Grok) to avoid cross-set trigger collisions.

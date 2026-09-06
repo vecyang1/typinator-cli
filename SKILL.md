@@ -40,10 +40,10 @@ typinator search "g⌘" --set "AI prompt" --json
 typinator get "AI prompt" "g⌘"
 
 # Add a new expansion rule (preflight checks nested references)
-typinator add "AI prompt" "ggg⌘" --expansion "/g{delay:1.5}{tab}"
+typinator add "AI prompt" "g⇧" --expansion "/goal{delay:0.25}{tab}"
 
 # Update an existing rule's expansion
-typinator set "AI prompt" "g⌘" --expansion "/g{delay:1.5}{tab}"
+typinator set "AI prompt" "g⇧" --expansion "/goal{delay:0.25}{tab}"
 
 # Toggle rule set enable/disable
 typinator toggle-set "AI prompt" --enable
