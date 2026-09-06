@@ -25,4 +25,11 @@ meaningful state changes. Do not turn `VAULT.md` into a session diary.
 - Configured Option key symbol rules: `;;a` ➔ `⌥` (SSOT) and `;;o` ➔ `{";;a"}` (dynamic nested expansion) to avoid multi-source rot.
 - Added comprehensive unit and live E2E tests (13/13 passing in test suite) covering nested expansion and symlink traversal.
 - Documented nested snippet syntax in `references/syntax_and_markers.md`.
+## 2026-09-06 07:52
+
+- Scanned 1,237 rules across user-created sets for duplicate expansions and nesting opportunities.
+- Implemented and verified Typinator dynamic inclusion grammar (`{"..."}`) across 23 rules in 5 sets (`Tel & Emails & Adress`, `Signiture`, `AI prompt`, `AI`, `Urls(creator)`).
+- Cold-backed up all 5 sets to local JSON artifacts before migration.
+- Verified live AppleScript state, event simulation expansions, and safety audits (0 issues, 0 loops). All 13 automated tests green.
+
 
