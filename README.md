@@ -116,11 +116,16 @@ python3 scripts/typinator_cli.py import -i ai_prompts.json --overwrite
 
 ### 10. Deep Trigger Debugging & Preflight Simulation
 ```bash
+# Debug by slash command or expansion token
+python3 scripts/typinator_cli.py debug /boost
+python3 scripts/typinator_cli.py debug /goal
+
 # Inspect existing rule status and any shadowing conflicts
+python3 scripts/typinator_cli.py debug "im⇧"
 python3 scripts/typinator_cli.py debug "img"
 
 # Preflight test if a prospective abbreviation is safe to add
-python3 scripts/typinator_cli.py debug "im⇧"
+python3 scripts/typinator_cli.py debug "img⇧"
 ```
 
 ### 11. Run Safety Audit & Auto-Clean

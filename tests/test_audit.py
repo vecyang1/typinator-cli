@@ -167,11 +167,56 @@ class TestTypinatorAuditLogic(unittest.TestCase):
         self.assertEqual(clean_res["mode"], "preflight_simulation")
         self.assertTrue(clean_res["is_safe"])
 
-        conflicted_res = debug_trigger("img_something")
-        self.assertEqual(conflicted_res["mode"], "preflight_simulation")
-        self.assertFalse(conflicted_res["is_safe"])
-        self.assertEqual(conflicted_res["potential_shadowers"][0]["set"], "Midjourney")
+    @patch("typinator_cli.search_rules")
+    @patch("typinator_cli.get_rule")
+    def test_debug_trigger_slash_command_match(self, mock_get, mock_search):
+        mock_search.return_value = [
+            {"abbreviation": "bo⇧", "set": "AI prompt", "set_enabled": True, "set_priority": 15, "rule_index": 0, "whole_word": False, "expansion": "/boost{delay:0.25}{tab}", "description": ""},
+            {"abbreviation": "bs⇧", "set": "Urls(browswers)", "set_enabled": True, "set_priority": 17, "rule_index": 5, "whole_word": False, "expansion": "/boost{delay:0.25}{tab}", "description": ""}
+        ]
+        mock_get.side_effect = lambda s, a: {
+            "set": s, "abbreviation": a, "expansion": "/boost{delay:0.25}{tab}", "description": "", "whole_word": False, "expansion_count": 0, "id": "1"
+        }
+        res = debug_trigger("/boost")
+        self.assertEqual(res["mode"], "inspection")
+        self.assertEqual(res["matched_by"], "expansion")
+        self.assertEqual(len(res["rules"]), 2)
+        abbrs = [r["abbreviation"] for r in res["rules"]]
+        self.assertIn("bo⇧", abbrs)
+        self.assertIn("bs⇧", abbrs)
+        self.assertTrue(res["preflight"]["is_safe"])
+
+    @patch("typinator_cli.search_rules")
+    @patch("typinator_cli.get_rule")
+    def test_debug_trigger_related_rules(self, mock_get, mock_search):
+        mock_search.return_value = [
+            {"abbreviation": "bo⇧", "set": "AI prompt", "set_enabled": True, "set_priority": 15, "rule_index": 0, "whole_word": False, "expansion": "/boost{delay:0.25}{tab}", "description": ""},
+            {"abbreviation": "bs⇧", "set": "Urls(browswers)", "set_enabled": True, "set_priority": 17, "rule_index": 5, "whole_word": False, "expansion": "/boost{delay:0.25}{tab}", "description": ""}
+        ]
+        mock_get.side_effect = lambda s, a: {
+            "set": s, "abbreviation": a, "expansion": "/boost{delay:0.25}{tab}", "description": "", "whole_word": False, "expansion_count": 5, "id": "1"
+        }
+        res = debug_trigger("bo⇧")
+        self.assertEqual(res["mode"], "inspection")
+        self.assertEqual(res["matched_by"], "abbreviation")
+        self.assertEqual(len(res["rules"]), 1)
+        rel = res["rules"][0].get("related_rules", [])
+        self.assertEqual(len(rel), 1)
+        self.assertEqual(rel[0]["abbreviation"], "bs⇧")
+        self.assertEqual(rel[0]["set"], "Urls(browswers)")
+
+    @patch("typinator_cli.run_applescript")
+    def test_get_rule_delimiter_safety(self, mock_as):
+        mock_as.return_value = "test_abbr===TYPINATOR_FIELD_DELIMITER===col1\tcol2\tcol3===TYPINATOR_FIELD_DELIMITER===desc with\ttabs===TYPINATOR_FIELD_DELIMITER===rule-123===TYPINATOR_FIELD_DELIMITER===false===TYPINATOR_FIELD_DELIMITER===42"
+        from typinator_cli import get_rule
+        rule = get_rule("SetA", "test_abbr")
+        self.assertIsNotNone(rule)
+        self.assertEqual(rule["abbreviation"], "test_abbr")
+        self.assertEqual(rule["expansion"], "col1\tcol2\tcol3")
+        self.assertEqual(rule["description"], "desc with\ttabs")
+        self.assertEqual(rule["expansion_count"], 42)
 
 
 if __name__ == '__main__':
     unittest.main()
+

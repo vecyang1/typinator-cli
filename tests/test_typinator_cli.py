@@ -81,6 +81,22 @@ class TestTypinatorCli(unittest.TestCase):
         self.assertEqual(data_preflight["mode"], "preflight_simulation")
         self.assertFalse(data_preflight["exists"])
 
+        # 3. Inspection mode for slash command /boost
+        res_boost = subprocess.run([bin_path, "debug", "/boost", "--json"], capture_output=True, text=True)
+        self.assertEqual(res_boost.returncode, 0)
+        data_boost = json.loads(res_boost.stdout)
+        self.assertEqual(data_boost["mode"], "inspection")
+        self.assertEqual(data_boost["matched_by"], "expansion")
+        self.assertGreaterEqual(len(data_boost["rules"]), 1)
+
+        # 4. Inspection mode for slash command /goal
+        res_goal = subprocess.run([bin_path, "debug", "/goal", "--json"], capture_output=True, text=True)
+        self.assertEqual(res_goal.returncode, 0)
+        data_goal = json.loads(res_goal.stdout)
+        self.assertEqual(data_goal["mode"], "inspection")
+        self.assertEqual(data_goal["matched_by"], "expansion")
+        self.assertGreaterEqual(len(data_goal["rules"]), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
