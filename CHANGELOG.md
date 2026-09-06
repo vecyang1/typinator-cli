@@ -5,6 +5,13 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-06
+
+### Documentation
+- Documented anti-collision trigger suffix conventions (`⌘`, `⇧`, `⌥`) in `references/syntax_and_markers.md`.
+- Added guidelines for agents adding new URL/prompt rules without bare Latin collision.
+- Documented macOS input methods and micro-expansions for generating `⌘` (U+2318).
+
 ## [1.1.0] - 2026-08-28
 
 ### Added
