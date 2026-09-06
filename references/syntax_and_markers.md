@@ -125,3 +125,8 @@ Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use st
 | `gf⇧` | `/graphify{delay:0.25}{tab}` | `[graphify]` | Codebase knowledge graph analysis |
 | `cp⇧` | `/compact{delay:0.25}{tab}` | `[compact]` | Context window compaction |
 | `cl⇧` | `/clear{delay:0.25}{tab}` | `/clear` | Clear session / conversation history |
+| `btw⇧` | `/btw{delay:0.25}{tab}` | `[btw]` | Ask side question without interrupting main flow |
+| `nm⇧` / `not⇧` | `/notion-mcp-connector{delay:0.25}{tab}` | `[notion-mcp-connector]` | Notion MCP connector skill |
+| `img⇧` / `ig⇧` | `/image-gen-with-api{delay:0.25}{tab}` | `[image-gen-with-api]` | Image generation via API skill |
+| `skc⇧` | `/skill-creator{delay:0.25}{tab}` | `[skill-creator]` | Meta-skill for authoring new skills |
+| `ski⇧` | `/skill-improver{delay:0.25}{tab}` | `[skill-improver]` | Meta-skill for hardening and evolving skills |
