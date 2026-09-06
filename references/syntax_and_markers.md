@@ -50,3 +50,18 @@ Typinator compiles and runs inline scripts during expansion:
 
 3. **Rule Set Collisions**:
    - If two active rule sets have the same abbreviation trigger (e.g. `g⌘` in both `AI prompt` and `Urls(AI)`), Typinator resolves top-to-bottom based on the rule set list order.
+
+---
+
+## 5. Trigger Suffix Conventions & Modifier Symbols
+
+1. **Anti-Collision Suffix Pattern (`⌘`, `⇧`, `⌥`)**:
+   - In rule sets like `Urls(browswers)`, `AI prompt`, and `Shortcut / Url`, abbreviations commonly terminate with a modifier glyph (most frequently `⌘`, U+2318).
+   - **Rationale**: Prevents accidental expansions when typing natural English or acronyms (e.g. `pfm` as a word vs `pfm⌘` as the explicit Preply URL trigger).
+   - **Agent Rule**: When adding new browser URL shortcuts or custom prompts, check the surrounding set's convention; do not add bare abbreviations without user confirmation if the set standardizes on `⌘` suffixes.
+
+2. **Typing `⌘` on macOS**:
+   - `Control + Command + Space`: Opens the Character Viewer; search `cmd` or `command`.
+   - Native Pinyin: Type `command` or `cmd` in macOS Chinese Pinyin IME to select `⌘`.
+   - Micro-expansion rule: Define an ultra-short rule (e.g. `;;c` or `cmd,` ➔ `⌘`) in a general set to generate the character anywhere in 3 keystrokes.
+

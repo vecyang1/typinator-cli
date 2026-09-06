@@ -21,45 +21,45 @@ Manage, configure, query, export, import, and audit Typinator expansion rules on
 
 ## 🚀 Quick CLI Operations
 
-All operations are unified under the bundled CLI script:
+All operations are unified under the globally available CLI (`typinator` or `typinator-cli`, symlinked in `~/.local/bin/`):
 
 ```bash
 # Check status
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py status
+typinator status
 
 # List all rule sets and counts
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py list-sets
+typinator list-sets
 
-# Sub-second high-speed search across all sets (<0.4s for 4,800+ rules)
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py search "keyword"
+# Sub-second high-speed search across all sets (<0.4s for 4,400+ rules)
+typinator search "keyword"
 
 # Search rules in a specific set (outputs JSON if needed)
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py search "g⌘" --set "AI prompt" --json
+typinator search "g⌘" --set "AI prompt" --json
 
 # Get details of a single rule
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py get "AI prompt" "g⌘"
+typinator get "AI prompt" "g⌘"
 
 # Add a new expansion rule
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py add "AI prompt" "ggg⌘" --expansion "/g{delay:1.5}{tab}"
+typinator add "AI prompt" "ggg⌘" --expansion "/g{delay:1.5}{tab}"
 
 # Update an existing rule's expansion
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py set "AI prompt" "g⌘" --expansion "/g{delay:1.5}{tab}"
+typinator set "AI prompt" "g⌘" --expansion "/g{delay:1.5}{tab}"
 
 # Toggle rule set enable/disable
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py toggle-set "AI prompt" --enable
+typinator toggle-set "AI prompt" --enable
 
 # Export & import rule sets
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py export --set "AI prompt" -o backup.json
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py import -i backup.json --overwrite
+typinator export --set "AI prompt" -o backup.json
+typinator import -i backup.json --overwrite
 
 # Delete a rule
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py delete "AI prompt" "unwanted_abbr" --yes
+typinator delete "AI prompt" "unwanted_abbr" -y
 
 # Audit for invisible control characters (\u2028 line breaks) and duplicate trigger collisions
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py audit
+typinator audit
 
 # Auto-fix invisible control characters across all rules
-python3 ~/.agents/skills/typinator-manager/scripts/typinator_cli.py audit --fix
+typinator audit --fix
 ```
 
 ---
