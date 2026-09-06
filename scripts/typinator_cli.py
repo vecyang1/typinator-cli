@@ -15,7 +15,7 @@ import subprocess
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 NESTED_REFERENCE_PATTERN = re.compile(r'\{"([^"\n]+)"\}')
 
@@ -25,6 +25,72 @@ INVISIBLE_CHARS_MAP = {
     '\ufeff': 'ZERO_WIDTH_NO_BREAK_SPACE (\\ufeff)',
     '\u200b': 'ZERO_WIDTH_SPACE (\\u200b)',
 }
+
+
+def is_word_char(ch: str) -> bool:
+    """
+    Return True if character is an alphanumeric word character in Typinator.
+    Typinator's internal wordCharacterSet uses +[NSCharacterSet alphanumericCharacterSet].
+    Non-word characters (symbols like ⇧, ⌘, punctuation, whitespace) act as word delimiters.
+    """
+    return ch.isalnum()
+
+
+class PrefixTrie:
+    """
+    High-performance prefix trie for sub-millisecond prefix collision and shadowing detection.
+    Supports case-insensitive prefix search across thousands of active rules.
+    """
+    def __init__(self):
+        self.root: Dict[str, Any] = {}
+
+    def insert(self, rule: Dict[str, Any]) -> None:
+        abbr = rule.get("abbreviation", "")
+        if not abbr:
+            return
+        node = self.root
+        for ch in abbr.lower():
+            if ch not in node:
+                node[ch] = {"_rules": []}
+            node = node[ch]
+        node.setdefault("_rules", []).append(rule)
+
+    def find_prefixes(self, abbr: str) -> List[Dict[str, Any]]:
+        """Find all rules whose abbreviation is a strict prefix of `abbr`."""
+        if not abbr:
+            return []
+        prefixes = []
+        node = self.root
+        abbr_lower = abbr.lower()
+        for i, ch in enumerate(abbr_lower):
+            if ch not in node:
+                break
+            node = node[ch]
+            # Any rule at this node before the final character of `abbr` is a strict prefix
+            if i < len(abbr_lower) - 1 and node.get("_rules"):
+                prefixes.extend(node["_rules"])
+        return prefixes
+
+    def find_extensions(self, abbr: str) -> List[Dict[str, Any]]:
+        """Find all rules that have `abbr` as a strict prefix (i.e. extensions of `abbr`)."""
+        if not abbr:
+            return []
+        node = self.root
+        for ch in abbr.lower():
+            if ch not in node:
+                return []
+            node = node[ch]
+
+        extensions = []
+        def _collect(curr: Dict[str, Any], is_root: bool = False):
+            if not is_root and curr.get("_rules"):
+                extensions.extend(curr["_rules"])
+            for k, child in curr.items():
+                if k != "_rules" and isinstance(child, dict):
+                    _collect(child, is_root=False)
+
+        _collect(node, is_root=True)
+        return extensions
 
 
 def run_applescript(script: str, timeout_sec: int = 30) -> str:
@@ -81,15 +147,12 @@ def get_status() -> Dict[str, Any]:
     tell application "Typinator"
         set sNames to name of every rule set
         set sEnabled to enabled of every rule set
-        set totalRules to 0
+        set totalRules to count of rules of every rule set
         set enabledSets to 0
         repeat with i from 1 to count of sNames
             if (item i of sEnabled) is true then
                 set enabledSets to enabledSets + 1
             end if
-            try
-                set totalRules to totalRules + (count of rules of (item i of rule sets))
-            end try
         end repeat
         return (count of sNames as text) & "\t" & (enabledSets as text) & "\t" & (totalRules as text)
     end tell
@@ -158,7 +221,8 @@ def toggle_set(set_name: str, enabled: bool) -> bool:
 def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = False) -> List[Dict[str, Any]]:
     """
     Search rules across sets by abbreviation, description, or expansion.
-    Uses bulk `rule table` for sub-second retrieval across thousands of rules.
+    Uses bulk `rule table` and `whole word` OSA properties for sub-second retrieval across thousands of rules.
+    Annotates each rule with set_priority, rule_index, and whole_word.
     """
     if set_name:
         sc = f'''
@@ -167,7 +231,11 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
                 set aSet to (first rule set whose name is "{escape_as(set_name)}")
                 set sEn to enabled of aSet
                 set t to rule table of aSet
-                return "===TYPINATOR_SET_DELIMITER===" & "{escape_as(set_name)}" & "===SET===" & (sEn as text) & "===ENABLED===" & t
+                set oldDelims to AppleScript's text item delimiters
+                set AppleScript's text item delimiters to ","
+                set wwStr to (whole word of every rule of aSet) as text
+                set AppleScript's text item delimiters to oldDelims
+                return "===TYPINATOR_SET_DELIMITER===" & "{escape_as(set_name)}" & "===SET===" & (sEn as text) & "===ENABLED===" & wwStr & "===WW===" & t
             on error
                 return ""
             end try
@@ -179,14 +247,23 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
             set sNames to name of every rule set
             set sEnabled to enabled of every rule set
             set outStr to ""
+            set oldDelims to AppleScript's text item delimiters
             repeat with i from 1 to count of sNames
+                set aSet to (item i of rule sets)
                 set sName to item i of sNames
                 set sEn to item i of sEnabled
+                set t to ""
                 try
-                    set t to rule table of (item i of rule sets)
-                    set outStr to outStr & "===TYPINATOR_SET_DELIMITER===" & sName & "===SET===" & (sEn as text) & "===ENABLED===" & t
+                    set t to rule table of aSet
                 end try
+                set wwStr to ""
+                try
+                    set AppleScript's text item delimiters to ","
+                    set wwStr to (whole word of every rule of aSet) as text
+                end try
+                set outStr to outStr & "===TYPINATOR_SET_DELIMITER===" & sName & "===SET===" & (sEn as text) & "===ENABLED===" & wwStr & "===WW===" & t
             end repeat
+            set AppleScript's text item delimiters to oldDelims
             return outStr
         end tell
         '''
@@ -199,29 +276,44 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
     q_lower = query.lower()
     set_blocks = raw.split("===TYPINATOR_SET_DELIMITER===")
 
+    set_index = 0
     for block in set_blocks:
         if "===SET===" not in block or "===ENABLED===" not in block:
             continue
-        header, table_content = block.split("===ENABLED===", 1)
+        header, content = block.split("===ENABLED===", 1)
         s_name, s_en_str = header.split("===SET===", 1)
         s_enabled = s_en_str.strip().lower() == "true"
 
+        if "===WW===" in content:
+            ww_raw, table_content = content.split("===WW===", 1)
+            ww_flags = [v.strip().lower() == "true" for v in ww_raw.split(",") if v.strip()]
+        else:
+            ww_flags = []
+            table_content = content
+
+        rule_idx = 0
         for line in table_content.splitlines():
             parts = line.split("\t")
             if len(parts) >= 2:
                 abbr = parts[0]
                 uid = parts[1]
                 exp_or_desc = parts[2] if len(parts) > 2 else ""
+                is_ww = ww_flags[rule_idx] if rule_idx < len(ww_flags) else False
 
                 if not query or (q_lower in abbr.lower() or q_lower in exp_or_desc.lower()):
                     results.append({
                         "set": s_name.strip(),
                         "set_enabled": s_enabled,
+                        "set_priority": set_index,
+                        "rule_index": rule_idx,
                         "abbreviation": abbr,
                         "expansion": exp_or_desc,
                         "description": "",
-                        "id": uid
+                        "id": uid,
+                        "whole_word": is_ww
                     })
+                rule_idx += 1
+        set_index += 1
     return results
 
 
@@ -380,19 +472,18 @@ def import_rules(data: Dict[str, Any], target_set: Optional[str] = None, overwri
     return {"created": created, "updated": updated, "skipped": skipped}
 
 
-def validate_nested_references(expansion: str, current_abbr: Optional[str] = None) -> List[Dict[str, Any]]:
+def validate_nested_references(
+    expansion: str,
+    current_abbr: Optional[str] = None,
+    rules_cache: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
     """Validate any nested references in expansion text against active rule sets."""
     warnings = []
     matches = NESTED_REFERENCE_PATTERN.findall(expansion)
     if not matches:
         return warnings
 
-    global_rules = search_rules()
-    global_abbr_to_sets: Dict[str, List[str]] = {}
-    for r in global_rules:
-        if r["set_enabled"]:
-            global_abbr_to_sets.setdefault(r["abbreviation"], []).append(r["set"])
-
+    remaining_matches = []
     for ref_abbr in matches:
         if current_abbr and ref_abbr == current_abbr:
             warnings.append({
@@ -400,7 +491,27 @@ def validate_nested_references(expansion: str, current_abbr: Optional[str] = Non
                 "ref": ref_abbr,
                 "message": f"Circular reference: rule '{current_abbr}' references itself."
             })
-        elif ref_abbr not in global_abbr_to_sets:
+        else:
+            remaining_matches.append(ref_abbr)
+
+    if not remaining_matches:
+        return warnings
+
+    if rules_cache is not None:
+        global_rules = rules_cache
+    else:
+        try:
+            global_rules = search_rules()
+        except Exception:
+            global_rules = []
+
+    global_abbr_to_sets: Dict[str, List[str]] = {}
+    for r in global_rules:
+        if r.get("set_enabled", True):
+            global_abbr_to_sets.setdefault(r["abbreviation"], []).append(r["set"])
+
+    for ref_abbr in remaining_matches:
+        if ref_abbr not in global_abbr_to_sets:
             warnings.append({
                 "type": "dangling_nested_reference",
                 "ref": ref_abbr,
@@ -422,30 +533,43 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
     Audit rules for:
     1. Invisible / rogue Unicode control characters (\\u2028, \\u2029, \\ufeff, \\u200b).
     2. Duplicate abbreviation triggers across enabled rule sets (cross-set global collision detection).
-    3. Nested reference integrity ({"abbr"}): dangling, ambiguous (multi-set shadow), or circular references.
+    3. Prefix collisions / prefix shadowing (where an active rule like 'img' shadows longer rules like 'img⇧').
+    4. Empty abbreviation triggers in active sets.
+    5. Nested reference integrity ({"abbr"}): dangling, ambiguous (multi-set shadow), or circular references.
     """
     global_rules = search_rules()
-    global_abbr_to_sets: Dict[str, List[str]] = {}
-    for r in global_rules:
-        if r["set_enabled"]:
-            global_abbr_to_sets.setdefault(r["abbreviation"], []).append(r["set"])
 
-    if set_name:
-        target_rules = [r for r in global_rules if r["set"] == set_name]
-    else:
-        target_rules = global_rules
+    # Active rules sorted strictly by set priority (0-indexed list order) and rule index
+    active_rules = [
+        r for r in global_rules
+        if r.get("set_enabled", True) and r.get("abbreviation")
+    ]
+    active_rules.sort(key=lambda x: (x.get("set_priority", 0), x.get("rule_index", 0)))
+
+    global_abbr_to_sets: Dict[str, List[str]] = {}
+    for r in active_rules:
+        s_name = r["set"]
+        if s_name not in global_abbr_to_sets.setdefault(r["abbreviation"], []):
+            global_abbr_to_sets[r["abbreviation"]].append(s_name)
 
     issues = []
     fixed_count = 0
+
+    # 1. Empty abbreviation detection
+    for r in global_rules:
+        if r.get("set_enabled", True) and not r.get("abbreviation", ""):
+            issues.append({
+                "type": "empty_abbreviation",
+                "set": r["set"],
+                "abbreviation": "",
+                "note": "Active rule has an empty abbreviation trigger and cannot expand"
+            })
+
+    # 2. Exact duplicate trigger collisions
     checked_collision_abbrs = set()
-
-    for r in target_rules:
+    for r in active_rules:
         abbr = r["abbreviation"]
-        exp = r["expansion"]
-        s_name = r["set"]
-
-        # 1. Cross-set duplicate trigger collisions
-        if r["set_enabled"] and abbr not in checked_collision_abbrs:
+        if abbr not in checked_collision_abbrs:
             active_sets = global_abbr_to_sets.get(abbr, [])
             if len(active_sets) > 1:
                 checked_collision_abbrs.add(abbr)
@@ -453,10 +577,66 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
                     "type": "duplicate_trigger_collision",
                     "abbreviation": abbr,
                     "active_in_sets": active_sets,
-                    "note": "The higher ranked set in Typinator will shadow the lower sets"
+                    "primary_set": active_sets[0],
+                    "shadowed_sets": active_sets[1:],
+                    "note": f"Set '{active_sets[0]}' has priority and will shadow sets {active_sets[1:]}"
                 })
 
-        # 2. Check invisible control characters
+    # 3. Prefix collisions / prefix shadowing using high-performance Trie
+    trie = PrefixTrie()
+    for r in active_rules:
+        abbr_r = r["abbreviation"]
+        ww_r = r.get("whole_word", False)
+        set_r = r["set"]
+        pri_r = r.get("set_priority", 0)
+
+        prefixes = trie.find_prefixes(abbr_r)
+        for p in prefixes:
+            abbr_p = p["abbreviation"]
+            ww_p = p.get("whole_word", False)
+            set_p = p["set"]
+            pri_p = p.get("set_priority", 0)
+
+            next_char = abbr_r[len(abbr_p)]
+            if not ww_p or not is_word_char(next_char):
+                reason = (
+                    f'Disabled by "{abbr_p}" of set "{set_p}".'
+                    if set_p != set_r
+                    else f'Disabled by earlier rule "{abbr_p}" in same set.'
+                )
+                boundary_desc = "does not require a whole word boundary" if not ww_p else f"triggers on non-word delimiter '{next_char}'"
+                explanation = (
+                    f"Rule '{abbr_p}' in set '{set_p}' (priority #{pri_p + 1}) is a prefix of '{abbr_r}' in set '{set_r}' (priority #{pri_r + 1}). "
+                    f"Because '{abbr_p}' {boundary_desc}, "
+                    f"typing '{abbr_p}' expands immediately, preventing '{abbr_r}' from ever completing."
+                )
+                issues.append({
+                    "type": "prefix_collision",
+                    "set": set_r,
+                    "abbreviation": abbr_r,
+                    "disabled_set": set_r,
+                    "disabled_abbreviation": abbr_r,
+                    "disabled_whole_word": ww_r,
+                    "shadowed_by_set": set_p,
+                    "shadowed_by_abbreviation": abbr_p,
+                    "shadowed_by_whole_word": ww_p,
+                    "reason": reason,
+                    "explanation": explanation
+                })
+
+        trie.insert(r)
+
+    # 4. Invisible character & nested reference checks
+    if set_name:
+        target_rules = [r for r in global_rules if r["set"] == set_name]
+    else:
+        target_rules = global_rules
+
+    for r in target_rules:
+        abbr = r.get("abbreviation", "")
+        exp = r.get("expansion", "")
+        s_name = r.get("set", "")
+
         found_inv = [desc for ch, desc in INVISIBLE_CHARS_MAP.items() if ch in exp]
         if found_inv:
             issue_item = {
@@ -474,7 +654,6 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
                 set_rule_expansion(s_name, abbr, expansion=clean_exp)
                 fixed_count += 1
 
-        # 3. Check nested reference integrity ({"..."})
         for match in NESTED_REFERENCE_PATTERN.finditer(exp):
             ref_abbr = match.group(1)
             if ref_abbr == abbr:
@@ -503,12 +682,204 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
                     "note": f"Referenced abbreviation '{ref_abbr}' exists in multiple active sets: {global_abbr_to_sets[ref_abbr]}. Higher ranked set will shadow lower sets."
                 })
 
+    if set_name:
+        filtered_issues = []
+        for issue in issues:
+            if (
+                issue.get("set") == set_name
+                or issue.get("disabled_set") == set_name
+                or issue.get("shadowed_by_set") == set_name
+                or set_name in issue.get("active_in_sets", [])
+            ):
+                filtered_issues.append(issue)
+        issues = filtered_issues
+        scanned_count = len(target_rules)
+    else:
+        scanned_count = len(global_rules)
+
     return {
-        "total_rules_scanned": len(target_rules),
+        "total_rules_scanned": scanned_count,
         "issues_found": len(issues),
         "fixed": fixed_count,
         "details": issues
     }
+
+
+def debug_trigger(abbreviation: str, set_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Deeply inspect and debug an abbreviation trigger:
+    - If rule exists: evaluates active status, set priority rank, whole_word rules,
+      prefix shadowing conflicts (who disables it, or whom it disables), invisible chars,
+      and gives actionable recommendations.
+    - If rule does not exist: runs preflight simulation to check if creating it would
+      be shadowed by an existing rule or shadow any existing active rule.
+    """
+    global_rules = search_rules()
+    active_rules = [
+        r for r in global_rules
+        if r.get("set_enabled", True) and r.get("abbreviation")
+    ]
+    active_rules.sort(key=lambda x: (x.get("set_priority", 0), x.get("rule_index", 0)))
+
+    matching_rules = []
+    for r in global_rules:
+        if set_name and r.get("set") != set_name:
+            continue
+        if r.get("abbreviation", "").lower() == abbreviation.lower():
+            matching_rules.append(r)
+
+    trie = PrefixTrie()
+    for r in active_rules:
+        trie.insert(r)
+
+    if matching_rules:
+        analyzed_rules = []
+        for r in matching_rules:
+            s_name = r["set"]
+            abbr = r["abbreviation"]
+            is_enabled = r.get("set_enabled", True)
+            pri = r.get("set_priority", 0)
+            rule_idx = r.get("rule_index", 0)
+            ww = r.get("whole_word", False)
+
+            detailed = get_rule(s_name, abbr) or r
+            expansion = detailed.get("expansion", r.get("expansion", ""))
+            desc = detailed.get("description", r.get("description", ""))
+            exp_count = detailed.get("expansion_count", 0)
+
+            shadowed_by = []
+            if is_enabled:
+                prefixes = trie.find_prefixes(abbr)
+                for p in prefixes:
+                    p_pri = p.get("set_priority", 0)
+                    p_idx = p.get("rule_index", 0)
+                    p_abbr = p.get("abbreviation", "")
+                    p_ww = p.get("whole_word", False)
+                    p_set = p.get("set", "")
+
+                    if (p_pri < pri) or (p_pri == pri and p_idx < rule_idx):
+                        next_char = abbr[len(p_abbr)]
+                        if not p_ww or not is_word_char(next_char):
+                            shadowed_by.append({
+                                "shadowed_by_set": p_set,
+                                "shadowed_by_abbreviation": p_abbr,
+                                "shadowed_by_priority": p_pri,
+                                "shadowed_by_whole_word": p_ww,
+                                "reason": f'Disabled by "{p_abbr}" of set "{p_set}".',
+                                "cause": (
+                                    f"Set '{p_set}' (priority #{p_pri + 1}) is evaluated before '{s_name}' (priority #{pri + 1}). "
+                                    f"Typing '{p_abbr}' expands immediately into '{p.get('expansion', '')[:30]}...', "
+                                    f"preventing '{abbr}' from ever completing."
+                                )
+                            })
+
+            shadows_rules = []
+            if is_enabled:
+                extensions = trie.find_extensions(abbr)
+                for ext in extensions:
+                    ext_pri = ext.get("set_priority", 0)
+                    ext_idx = ext.get("rule_index", 0)
+                    ext_abbr = ext.get("abbreviation", "")
+                    ext_set = ext.get("set", "")
+
+                    if (pri < ext_pri) or (pri == ext_pri and rule_idx < ext_idx):
+                        next_char = ext_abbr[len(abbr)]
+                        if not ww or not is_word_char(next_char):
+                            shadows_rules.append({
+                                "disabled_set": ext_set,
+                                "disabled_abbreviation": ext_abbr,
+                                "disabled_priority": ext_pri,
+                                "reason": f"Disables '{ext_abbr}' in set '{ext_set}'"
+                            })
+
+            duplicate_sets = [
+                x["set"] for x in active_rules
+                if x["abbreviation"].lower() == abbr.lower() and x["set"] != s_name
+            ]
+
+            if not is_enabled:
+                status = "INACTIVE_SET"
+            elif shadowed_by:
+                status = "DISABLED"
+            elif duplicate_sets:
+                status = "DUPLICATE_COLLISION"
+            else:
+                status = "ACTIVE"
+
+            recommendations = []
+            if shadowed_by:
+                recommendations.append(
+                    f"Change abbreviation '{abbr}' in set '{s_name}' to an uncontested trigger prefix (e.g., replace leading '{shadowed_by[0]['shadowed_by_abbreviation']}' with alternate letters)."
+                )
+                if not shadowed_by[0]["shadowed_by_whole_word"]:
+                    recommendations.append(
+                        f"If '{shadowed_by[0]['shadowed_by_abbreviation']}' in set '{shadowed_by[0]['shadowed_by_set']}' should only match whole words, enable 'whole word' on that rule."
+                    )
+                if pri > shadowed_by[0]["shadowed_by_priority"]:
+                    recommendations.append(
+                        f"Drag set '{s_name}' above set '{shadowed_by[0]['shadowed_by_set']}' in Typinator's set priority list."
+                    )
+
+            analyzed_rules.append({
+                "set": s_name,
+                "abbreviation": abbr,
+                "expansion": expansion,
+                "description": desc,
+                "whole_word": ww,
+                "set_priority": pri,
+                "rule_index": rule_idx,
+                "set_enabled": is_enabled,
+                "expansion_count": exp_count,
+                "status": status,
+                "shadowed_by": shadowed_by,
+                "shadows_rules": shadows_rules,
+                "duplicate_sets": duplicate_sets,
+                "recommendations": recommendations
+            })
+
+        return {
+            "mode": "inspection",
+            "abbreviation": abbreviation,
+            "exists": True,
+            "rules": analyzed_rules
+        }
+
+    else:
+        potential_shadowers = []
+        prefixes = trie.find_prefixes(abbreviation)
+        for p in prefixes:
+            p_ww = p.get("whole_word", False)
+            next_char = abbreviation[len(p["abbreviation"])]
+            if not p_ww or not is_word_char(next_char):
+                potential_shadowers.append({
+                    "set": p["set"],
+                    "abbreviation": p["abbreviation"],
+                    "whole_word": p_ww,
+                    "set_priority": p.get("set_priority", 0),
+                    "reason": f"Active rule '{p['abbreviation']}' in set '{p['set']}' would disable '{abbreviation}' if added to a lower-ranked set."
+                })
+
+        potential_disabled = []
+        extensions = trie.find_extensions(abbreviation)
+        for ext in extensions:
+            potential_disabled.append({
+                "set": ext["set"],
+                "abbreviation": ext["abbreviation"],
+                "whole_word": ext.get("whole_word", False),
+                "set_priority": ext.get("set_priority", 0),
+                "reason": f"Active rule '{ext['abbreviation']}' in set '{ext['set']}' would be disabled if '{abbreviation}' is added with whole_word=False to a higher-ranked set."
+            })
+
+        is_safe = len(potential_shadowers) == 0 and len(potential_disabled) == 0
+
+        return {
+            "mode": "preflight_simulation",
+            "abbreviation": abbreviation,
+            "exists": False,
+            "is_safe": is_safe,
+            "potential_shadowers": potential_shadowers,
+            "potential_disabled": potential_disabled
+        }
 
 
 def expand_text(text: str) -> str:
@@ -607,10 +978,16 @@ def main():
     p_import.add_argument("--overwrite", action="store_true", help="Overwrite existing rules with matching abbreviations")
 
     # audit
-    p_audit = subparsers.add_parser("audit", help="Audit rules for invisible characters and duplicate collisions")
+    p_audit = subparsers.add_parser("audit", help="Audit rules for invisible characters, duplicate collisions, and prefix shadowing")
     p_audit.add_argument("--set", help="Audit specific rule set only")
     p_audit.add_argument("--fix", action="store_true", help="Automatically sanitize invisible control characters")
     p_audit.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # debug
+    p_debug = subparsers.add_parser("debug", help="Deeply inspect an abbreviation trigger for conflicts, prefix shadowing, or preflight safety")
+    p_debug.add_argument("abbreviation", help="Abbreviation to inspect or simulate")
+    p_debug.add_argument("--set", help="Filter by specific rule set")
+    p_debug.add_argument("--json", action="store_true", help="Output raw JSON")
 
     # expand
     p_exp = subparsers.add_parser("expand", help="Simulate typing and expanding a string")
@@ -709,6 +1086,13 @@ def main():
                 warns = validate_nested_references(args.expansion, current_abbr=args.abbreviation)
                 for w in warns:
                     print(f"⚠️ Warning ({w['type']}): {w['message']}", file=sys.stderr)
+            dbg = debug_trigger(args.abbreviation, set_name=args.set)
+            if dbg.get("mode") == "preflight_simulation" and not dbg.get("is_safe"):
+                for sh in dbg.get("potential_shadowers", []):
+                    print(f"⚠️ Preflight Warning: {sh['reason']}", file=sys.stderr)
+                for dis in dbg.get("potential_disabled", []):
+                    print(f"⚠️ Preflight Warning: {dis['reason']}", file=sys.stderr)
+
             uid = add_rule(
                 args.set,
                 args.abbreviation,
@@ -759,6 +1143,14 @@ def main():
                         print(f"⚠️ Invisible Character in [{d['set']}] '{d['abbreviation']}': {d['detected']}")
                     elif t == "duplicate_trigger_collision":
                         print(f"⚠️ Duplicate Trigger '{d['abbreviation']}' across active sets: {d['active_in_sets']}")
+                        print(f"   Note: {d.get('note')}")
+                    elif t == "prefix_collision":
+                        print(f"⚠️ Prefix Collision in [{d['set']}] '{d['abbreviation']}':")
+                        print(f"   {d['reason']}")
+                        if d.get("explanation"):
+                            print(f"   Note: {d['explanation']}")
+                    elif t == "empty_abbreviation":
+                        print(f"⚠️ Empty Abbreviation in [{d['set']}]: {d.get('note')}")
                     elif t == "dangling_nested_reference":
                         print(f"⚠️ Dangling Nested Reference in [{d['set']}] '{d['abbreviation']}': target '{d['target_abbreviation']}' not found in any active set")
                     elif t == "ambiguous_nested_reference":
@@ -767,6 +1159,57 @@ def main():
                         print(f"⚠️ Circular Nested Reference in [{d['set']}] '{d['abbreviation']}': references itself '{d['target_abbreviation']}'")
                 if res["issues_found"] == 0:
                     print("✨ All rules are clean! Zero anomalies detected.")
+
+        elif args.command == "debug":
+            res = debug_trigger(args.abbreviation, set_name=args.set)
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            else:
+                if res["mode"] == "inspection":
+                    print(f"=== Typinator Trigger Inspection: '{res['abbreviation']}' ===")
+                    print(f"Found {len(res['rules'])} matching rule(s):\n")
+                    for i, r in enumerate(res["rules"], 1):
+                        en_str = "YES" if r["set_enabled"] else "NO"
+                        status_icon = "🟢" if r["status"] == "ACTIVE" else "🔴"
+                        print(f"[Rule #{i}] Set: '{r['set']}' (Priority #{r['set_priority'] + 1}, Enabled: {en_str})")
+                        print(f"  Abbreviation:     '{r['abbreviation']}'")
+                        print(f"  Expansion:        {r['expansion']}")
+                        if r['description']:
+                            print(f"  Description:      {r['description']}")
+                        print(f"  Whole Word Only:  {r['whole_word']}")
+                        print(f"  Expansion Count:  {r['expansion_count']}")
+                        print(f"  Status:           {status_icon} {r['status']}")
+
+                        if r["shadowed_by"]:
+                            print("\n  ⚠️ Shadowing & Conflicts:")
+                            for s in r["shadowed_by"]:
+                                print(f"    • {s['reason']}")
+                                print(f"      Cause: {s['cause']}")
+
+                        if r["shadows_rules"]:
+                            print("\n  ⚠️ This rule shadows later rules:")
+                            for sr in r["shadows_rules"]:
+                                print(f"    • {sr['reason']}")
+
+                        if r["duplicate_sets"]:
+                            print(f"\n  ⚠️ Duplicate trigger exists in other sets: {r['duplicate_sets']}")
+
+                        if r["recommendations"]:
+                            print("\n  💡 Actionable Recommendations:")
+                            for rec in r["recommendations"]:
+                                print(f"    • {rec}")
+                        print("-" * 52)
+                else:
+                    print(f"=== Typinator Trigger Preflight: '{res['abbreviation']}' ===")
+                    print(f"Rule '{res['abbreviation']}' does not exist in any set.\n")
+                    if res["is_safe"]:
+                        print("✨ Safe to Add! No prefix shadowing or collision conflicts detected.")
+                    else:
+                        print("⚠️ Preflight Collision Risk:")
+                        for sh in res["potential_shadowers"]:
+                            print(f"  • {sh['reason']}")
+                        for dis in res["potential_disabled"]:
+                            print(f"  • {dis['reason']}")
 
         elif args.command == "expand":
             expand_text(args.text)

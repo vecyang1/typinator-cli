@@ -5,6 +5,17 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-06
+
+### Added
+- **Prefix Collision & Shadowing Detection**: Trie-based prefix engine (`PrefixTrie`) detecting rules disabled by higher-priority prefixes across all sets (`Disabled by "<abbr>" of set "<set>"`).
+- **New `typinator debug <abbr>` Command**: Deep trigger inspection tool diagnosing active status, shadowing rules, shadowed extensions, duplicate triggers, and preflight safety simulations.
+- **Preflight Checks in `typinator add`**: Automatically simulates adding new triggers to prevent creating rules that are disabled upon creation.
+- **Set Priority & Whole-Word Delimiter Simulation**: Accurately models Typinator's real-time key-by-key matching logic, including how word boundaries treat modifier suffixes (`⇧`, `⌘`, `⌥`).
+
+### Fixed
+- **Resolved Live `img⇧` Conflict**: Replaced conflicted `img⇧` in set `AI prompt` with uncontested `im⇧` and updated `ig⇧` alias, resolving the `Disabled by "img" of set "Midjourney"` error while keeping `Midjourney`'s `img` intact.
+
 ## [1.2.0] - 2026-09-06
 
 ### Added

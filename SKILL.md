@@ -12,7 +12,7 @@ description: Use when an agent needs to inspect, search, add, update, delete, ex
 - **Author:** V
 - **Created:** 2026-08-28
 - **Updated:** 2026-09-06
-- **Version:** 1.2.0
+- **Version:** 1.3.0
 - **Review status:** `reviewed`
 
 Manage, configure, query, export, import, and audit Typinator expansion rules on macOS programmatically without manual UI interaction.
@@ -39,7 +39,11 @@ typinator search "g⌘" --set "AI prompt" --json
 # Get details of a single rule
 typinator get "AI prompt" "g⌘"
 
-# Add a new expansion rule (preflight checks nested references)
+# Deeply inspect trigger for prefix collisions, shadowing, and preflight safety
+typinator debug "im⇧"
+typinator debug "img"
+
+# Add a new expansion rule (preflight checks nested references and prefix shadowing)
 typinator add "AI prompt" "g⇧" --expansion "/goal{delay:0.25}{tab}"
 
 # Update an existing rule's expansion
@@ -55,9 +59,9 @@ typinator import -i backup.json --overwrite
 # Delete a rule
 typinator delete "AI prompt" "unwanted_abbr" -y
 
-# Audit for invisible control characters, cross-set trigger collisions, and nested reference integrity
+# Audit for invisible control characters, prefix collisions, and nested reference integrity
 typinator audit
-typinator audit --set "Shortcut / Url"
+typinator audit --set "AI prompt"
 
 # Auto-fix invisible control characters across all rules
 typinator audit --fix
@@ -67,7 +71,7 @@ typinator audit --fix
 
 ## 📖 Key References
 
-* [Marker Syntax & Keystroke Reference](references/syntax_and_markers.md): Delay markers (`{delay:n}`), keystrokes (`{tab}`, `{key:...}`), inline scripts, and formatting gotchas.
+* [Marker Syntax & Keystroke Reference](references/syntax_and_markers.md): Delay markers (`{delay:n}`), keystrokes (`{tab}`, `{key:...}`), inline scripts, prefix collision mechanics, and formatting gotchas.
 * [AppleScript OSA API](references/applescript_api.md): Typinator scripting classes, properties, and dictionary methods.
 * [Changelog](CHANGELOG.md): Version history and improvements.
 
@@ -79,3 +83,4 @@ typinator audit --fix
 2. **Check Set Collisions**: Before adding a new abbreviation, use `search` or `audit` to ensure it is not shadowed by an active rule set ranked higher in Typinator's evaluation order.
 3. **Execution Sandbox**: Calls to `osascript` targeting running GUI applications require outside-sandbox execution (`BypassSandbox: true`) on macOS.
 4. **Dynamic Reference Precaution**: Before configuring a dynamic alias `{"<target>"}`, ensure `<target>` is unique across all active sets. `typinator audit` and CLI mutation commands will alert on ambiguous or dangling targets.
+5. **Prefix Collision Verification (`typinator debug <abbr>`)**: If a shorter prefix (e.g. `img`) exists in a higher-priority set without whole-word constraints, longer triggers starting with that prefix (e.g. `img⇧`) are automatically disabled by Typinator (`Disabled by "img" of set "Midjourney"`). Always run `typinator debug <abbr>` to preflight triggers before adding or modifying them.

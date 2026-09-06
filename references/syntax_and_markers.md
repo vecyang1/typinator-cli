@@ -127,6 +127,45 @@ Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use st
 | `cl⇧` | `/clear{delay:0.25}{tab}` | `/clear` | Clear session / conversation history |
 | `btw⇧` | `/btw{delay:0.25}{tab}` | `[btw]` | Ask side question without interrupting main flow |
 | `nm⇧` / `not⇧` | `/notion-mcp-connector{delay:0.25}{tab}` | `[notion-mcp-connector]` | Notion MCP connector skill |
-| `img⇧` / `ig⇧` | `/image-gen-with-api{delay:0.25}{tab}` | `[image-gen-with-api]` | Image generation via API skill |
+| `im⇧` / `ig⇧` | `/image-gen-with-api{delay:0.25}{tab}` | `[image-gen-with-api]` | Image generation via API skill |
 | `skc⇧` | `/skill-creator{delay:0.25}{tab}` | `[skill-creator]` | Meta-skill for authoring new skills |
 | `ski⇧` | `/skill-improver{delay:0.25}{tab}` | `[skill-improver]` | Meta-skill for hardening and evolving skills |
+
+---
+
+## 8. Prefix Shadowing & Collision Mechanics (Typinator Evaluation Engine)
+
+Typinator processes keystrokes incrementally in real time across active rule sets ranked by priority order.
+
+### The Prefix Collision Trap:
+If rule $A$ (e.g. `img` in set `Midjourney`, priority #4) is a prefix of rule $B$ (e.g. `img⇧` in set `AI prompt`, priority #16):
+1. When typing `i`, then `m`, then `g`, Typinator instantly matches `img`.
+2. If rule $A$ has `whole_word=False`, Typinator immediately expands rule $A$ (`/imagine `) and consumes the input buffer.
+3. The suffix key `⇧` is never reached in the context of the abbreviation.
+4. **Typinator GUI Error**: Typinator flags rule $B$ in red as:
+   ```text
+   Disabled by "img" of set "Midjourney".
+   ```
+
+### Why "Whole Word" Still Collides with Modifier Symbols (`⇧`, `⌘`):
+Typinator treats punctuation, spaces, tabs, and non-alphanumeric symbols (such as macOS modifier glyphs `⇧`, `⌘`, `⌥`) as word delimiters. Even if rule $A$ has "Whole Word" enabled:
+- Typing `img⇧` causes Typinator to treat `img` as a whole word because `⇧` acts as a delimiter!
+- Typinator expands `img` to `/imagine ` and then leaves `⇧` unhandled or appended.
+- Therefore, rules sharing a bare prefix with a modifier suffix cannot coexist if evaluated in descending order.
+
+### Diagnostic & Preflight Tooling (`typinator debug`):
+Before creating or updating rules, use the CLI's Trie-based inspector:
+
+```bash
+# Deep inspection of an existing rule's conflict status
+typinator debug "img⇧"
+
+# Preflight simulation before adding a new rule
+typinator debug "im⇧"
+```
+
+The tool prints:
+- `🔴 DISABLED` status with exact shadowing cause and set priority ranking.
+- Actionable resolution strategies (prefix change, whole-word adjustment, or set reordering).
+- Preflight warning if adding a trigger would disable lower-priority rules.
+

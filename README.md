@@ -18,7 +18,11 @@ Enables programmatic rule search, live in-memory expansion updates, batch export
 - 🛡️ **Safety & Hygiene Audit**:
   - Automatically flags invisible Unicode characters (such as `\u2028` line separators or `\u2029` paragraph separators) that break autocompletion in browser address bars or terminals.
   - Detects duplicate abbreviation triggers across multiple enabled rule sets that cause unintentional shadowing.
+  - Trie-based **prefix collision engine** detecting rules disabled by higher-priority prefixes (`Disabled by "x" of set "y"`).
   - Built-in `--fix` option to automatically sanitize invisible control characters across all active rules.
+- 🔍 **Deep Trigger Debugging & Preflight**:
+  - `typinator debug <abbr>` inspects rule activation status, shadowing causes, shadowed descendants, and duplicate triggers.
+  - Preflight simulation mode to check if a new trigger is safe to register before adding it.
 - 💾 **Backup & Migration**: One-command JSON export and import for rule sets.
 - ⏱️ **Delay & Keystroke Support**: Full support for Typinator syntax including `{delay:1.5}`, `{tab}`, `{return}`, and key combinations (`{key:⌘↩}`).
 - 📦 **Zero External Dependencies**: Implemented strictly using Python's standard library.
@@ -110,16 +114,28 @@ python3 scripts/typinator_cli.py export --set "AI prompt" -o ai_prompts.json
 python3 scripts/typinator_cli.py import -i ai_prompts.json --overwrite
 ```
 
-### 10. Run Safety Audit & Auto-Clean
+### 10. Deep Trigger Debugging & Preflight Simulation
 ```bash
-# Scan for invisible control characters (\u2028) and duplicate triggers
+# Inspect existing rule status and any shadowing conflicts
+python3 scripts/typinator_cli.py debug "img"
+
+# Preflight test if a prospective abbreviation is safe to add
+python3 scripts/typinator_cli.py debug "im⇧"
+```
+
+### 11. Run Safety Audit & Auto-Clean
+```bash
+# Scan for invisible control characters (\u2028), duplicate triggers, and prefix collisions
 python3 scripts/typinator_cli.py audit
+
+# Audit specific rule set
+python3 scripts/typinator_cli.py audit --set "AI prompt"
 
 # Auto-fix invisible characters across all rules
 python3 scripts/typinator_cli.py audit --fix
 ```
 
-### 11. Programmatic Expansion & Quick Search
+### 12. Programmatic Expansion & Quick Search
 ```bash
 # Trigger expansion of a string programmatically
 python3 scripts/typinator_cli.py expand "ggg⌘"
