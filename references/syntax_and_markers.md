@@ -60,8 +60,26 @@ Typinator compiles and runs inline scripts during expansion:
    - **Rationale**: Prevents accidental expansions when typing natural English or acronyms (e.g. `pfm` as a word vs `pfm⌘` as the explicit Preply URL trigger).
    - **Agent Rule**: When adding new browser URL shortcuts or custom prompts, check the surrounding set's convention; do not add bare abbreviations without user confirmation if the set standardizes on `⌘` suffixes.
 
-2. **Typing `⌘` on macOS**:
-   - `Control + Command + Space`: Opens the Character Viewer; search `cmd` or `command`.
-   - Native Pinyin: Type `command` or `cmd` in macOS Chinese Pinyin IME to select `⌘`.
-   - Micro-expansion rule: Define an ultra-short rule (e.g. `;;c` or `cmd,` ➔ `⌘`) in a general set to generate the character anywhere in 3 keystrokes.
+2. **Typing `⌘`, `⇧`, `⌥` on macOS**:
+   - `Control + Command + Space`: Opens the Character Viewer.
+   - Micro-expansion rules:
+     - `;;c` ➔ `⌘` (Command)
+     - `;;s` ➔ `⇧` (Shift)
+     - `;;a` ➔ `⌥` (Alt / Option canonical source)
+     - `;;o` ➔ `{";;a"}` (Option alias referencing `;;a`)
+
+---
+
+## 6. Nested Snippets & Abbreviation Inclusion (SSOT)
+
+Typinator natively supports referencing another abbreviation dynamically:
+
+| Marker | Description | Example |
+|---|---|---|
+| `{"abbreviation"}` | Dynamically evaluates and inserts another rule's expansion | `{";;a"}` evaluates `;;a` and inserts `⌥` |
+
+### Best Practices:
+1. **Prevent Source Rot**: When aliases or multiple abbreviations should yield the same output, establish one as the canonical source of truth (SSOT) and point other triggers to it via `{"<primary_abbr>"}`.
+2. **Pre-Processing Execution**: Abbreviation substitutions occur *before* other nested markers are processed.
+3. **No Circular Loops**: Ensure references are directed acyclic graphs (DAGs) to prevent recursion loops.
 
