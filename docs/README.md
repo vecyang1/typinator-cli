@@ -47,30 +47,6 @@ landing URLs, delivery URLs, follow-up paths, owners, and `last_verified` proof.
 lead-product, traffic, ecommerce, checkout, or lead-management specialist
 skills.
 
-## Cross-Project Index Backlink
-
-For projects under the Cowork or A-coding workspaces, keep the local owner docs
-and the Project Vault project index as a reciprocal pointer pair.
-
-- Local side: `VAULT.md`, `FILE_MAP_INDEX.md`, `AGENTS.md`, and this folder
-  explain what the project owns locally.
-- Router side: the Project Vault project index should point back to this project
-  root, owner docs, repo state, and push target:
-  `/workspace Cowork/26.06.06 Project Vault/internal-docs/registries/project-index.md`.
-- Before assuming a project is duplicate, moved, missing, inherited, external,
-  or GitHub-only, run:
-
-```bash
-python3 "/workspace Cowork/26.06.06 Project Vault/internal-docs/scripts/find_project_context.py" "<project or task query>"
-```
-
-- After moving or renaming this root, changing remotes/push targets, or adding
-  core owner docs, refresh and verify the reciprocal index:
-
-```bash
-python3 "/workspace Cowork/26.06.06 Project Vault/internal-docs/scripts/audit_project_index.py" --update --write-report
-python3 "/workspace Cowork/26.06.06 Project Vault/internal-docs/scripts/audit_project_index.py" --check
-```
 
 > Prefer an owner-created marketing or audience skill when available; otherwise
 > choose the narrowest specialist skill, record the choice in `progress.md`, and
