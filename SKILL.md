@@ -8,7 +8,7 @@ description: Use when an agent needs to inspect, search, add, update, delete, ex
 ## Skill Metadata
 
 - **Origin:** `local`
-- **Source:** `/Users/vecsatfoxmailcom/Documents/A-coding/26.09.06-typinator-cli`
+- **Source:** `https://github.com/vecyang1/typinator-cli`
 - **Author:** V
 - **Created:** 2026-08-28
 - **Updated:** 2026-09-07

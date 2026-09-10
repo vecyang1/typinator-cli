@@ -12,5 +12,3 @@ Examples:
 | `resources/imports/` | Human-provided files awaiting processing. |
 | `resources/exports/` | Generated artifacts intended for review. |
 
-Move stable cross-project memory to the 2nd Brain Memory Center only when it
-will help outside this project.
