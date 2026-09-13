@@ -51,6 +51,11 @@ Typinator compiles and runs inline scripts during expansion:
 3. **Rule Set Collisions**:
    - If two active rule sets have the same abbreviation trigger (e.g. `g⌘` in both `AI prompt` and `Urls(AI)`), Typinator resolves top-to-bottom based on the rule set list order.
 
+4. **Leading Space Convention for Slash Commands (` /<command>{delay:0.25}{tab}`)**:
+   - Always prefix AI/IDE slash command expansions with a leading space ` ` (e.g. ` /goal{delay:0.35}{tab}`, ` /typinator-manager{delay:0.25}{tab}`).
+   - **Rationale**: In modern IDEs and chat interfaces (Antigravity, Gemini, Claude, VS Code), slash command autocomplete chips are only triggered when preceded by whitespace or at the start of an input line. Without a leading space, typing an abbreviation mid-sentence or chaining commands (e.g. `prev/goal`) gets stuck to adjacent words or punctuation and fails to trigger autocomplete.
+   - If followed by trailing text (e.g. `if need; `), also append a space after `{tab}` (e.g. ` /boost{delay:0.25}{tab} if need; `) so the trailing parameter is cleanly separated from the command token.
+
 ---
 
 ## 5. Trigger Suffix Conventions & Modifier Symbols
