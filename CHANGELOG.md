@@ -5,6 +5,36 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026-09-13] - 2026-09-13
+
+### Changed
+- **Slash Command Leading Space Normalization**: Standardized all 38 AI/IDE slash command expansion triggers across `AI prompt` and `Urls(browswers)` with a leading space (` /<cmd>{delay:0.25}{tab}`) per the `gh⇧` reference convention, preventing text sticking and ensuring clean autocomplete trigger in Antigravity, VS Code, Gemini, and Claude prompt inputs.
+- **Trailing Argument Separation**: Enhanced commands with trailing qualifiers (`bs⇧`, `wx⇧`) with a space after `{tab}` (e.g. ` /boost{delay:0.25}{tab} if need; `) to eliminate argument collision.
+
+### Added
+- **New High-Frequency Slash Command Triggers**:
+  - `typ⇧`: ` /typinator-manager{delay:0.25}{tab}` (Typinator manager operations)
+  - `big⇧`: ` /breaking-information-gaps{delay:0.25}{tab}` (Critical thinking & gap resolution)
+  - `bee⇧`: ` /beeper-ops{delay:0.25}{tab}` (Beeper chat & video idea curator ops)
+  - `uk⇧`: ` /uptime-kuma-ops{delay:0.25}{tab}` (Uptime Kuma monitoring ops)
+
+### Fixed
+- **Duplicate Broken Rule Pruning**: Removed broken duplicate rule `tw⇧` (`/{delay:0.25}{tab}`) in `AI prompt`, keeping canonical `tw⇧` and `baa⇧` intact.
+
+### Audited
+- **Cadence Sidecar Health Audit & E2E Validation**: Inspected 68 cadence cards across Antigravity, Claude, Codex, and launchd runtimes via `cadence_ctl doctor`. Verified live runtime execution for 6 active sidecars (`beeper-video-ideas-curator`, `glintmuse-social-team-pulse`, `portfolio-link-sentinel`, `receipt-finance-ops-sentinel`, `xinchaovi-student-balance-monitor`, `loi-da-nang-rent-audit`), all passing with zero errors.
+
+## [2026-09-12] - 2026-09-12
+
+### Fixes
+- Handle headless runner when Typinator app is not running (`ce36dd5`)
+
+### Documentation
+- Add wc⇧ /wheel-check to slash command table (`9c0350a`)
+
+### Maintenance
+- Strip private context files and sanitize paths per github-ops gates (`1a003f2`)
+
 ## [1.3.1] - 2026-09-07
 
 ### Added
