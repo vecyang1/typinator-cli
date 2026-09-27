@@ -5,7 +5,16 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026-09-27] - 2026-09-27
+
+### Added
+- **SunBrowser (AdsPower) & BitBrowser Anti-Detect Compatibility Layer**:
+  - Authored `~/Library/Application Support/Typinator/Application Settings/Browsers.plist` applying Chrome/Chromium native keyboard timing and paste mechanics (`directString = 0`, `backspace = yes`, `keyBeforeBS = 18`, `cocoaText = no`, `lineJump = yes`, `moveDelay = 0.2`, `pasteDelay = 0.1`, `extraRestoreDelay = 0.25`, `optimizeExpansion = "special"`) to `SunBrowser`, `BitBrowser`, `AdsPower Global`, and `比特浏览器`.
+  - Solves dropped keystrokes, scrambled text, and swallowed backspaces in Chromium-based anti-detect browsers.
+  - Synchronized `~/Library/Application Support/Typinator/Sets/Set Assignment` to explicitly register `SunBrowser.app`, `BitBrowser.app`, `AdsPower Global.app`, and `比特浏览器bit.app` with the full 64 browser rule sets (including `Urls(browswers)` with 661 rules, `Urls(AI)`, and `AI prompt`), achieving 100% surface parity with Google Chrome.
+
 ## [2026-09-13] - 2026-09-13
+
 
 ### Changed
 - **Slash Command Leading Space Normalization**: Standardized all 38 AI/IDE slash command expansion triggers across `AI prompt` and `Urls(browswers)` with a leading space (` /<cmd>{delay:0.25}{tab}`) per the `gh⇧` reference convention, preventing text sticking and ensuring clean autocomplete trigger in Antigravity, VS Code, Gemini, and Claude prompt inputs.
