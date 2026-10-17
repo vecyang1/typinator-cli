@@ -5,6 +5,15 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-10-17
+
+### Added
+- **Typinator Recovery & Restart Command (`typinator restart`)**:
+  - Added `typinator restart` (with optional `-f` / `--force` and `--json` flags) to safely restart Typinator and instantly recover from frozen, hung, or event-tap stalled states.
+  - Tries graceful AppleScript shutdown first, cleanly falling back to SIGTERM/SIGKILL if unresponsive.
+  - Relaunches `/Applications/Typinator.app`, waits for process spawn, verifies post-startup health, and outputs rule set and active rule totals.
+  - Added unit test coverage in `tests/test_typinator_cli.py` and updated `SKILL.md` and `README.md`.
+
 ## [2026-09-27] - 2026-09-27
 
 ### Added

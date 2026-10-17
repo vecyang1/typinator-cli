@@ -103,6 +103,15 @@ class TestTypinatorCli(unittest.TestCase):
         self.assertEqual(data_goal["matched_by"], "expansion")
         self.assertGreaterEqual(len(data_goal["rules"]), 1)
 
+    def test_bin_wrapper_restart_help(self):
+        import subprocess
+        bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin", "typinator"))
+        res = subprocess.run([bin_path, "restart", "--help"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("Restart Typinator application", res.stdout)
+        self.assertIn("--force", res.stdout)
+        self.assertIn("--json", res.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

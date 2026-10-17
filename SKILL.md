@@ -27,6 +27,10 @@ All operations are unified under the globally available CLI (`typinator` or `typ
 # Check status
 typinator status
 
+# Restart application (recovers frozen, hung, or unresponsive state)
+typinator restart
+typinator restart --force
+
 # List all rule sets and counts
 typinator list-sets
 

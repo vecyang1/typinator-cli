@@ -149,6 +149,15 @@ python3 scripts/typinator_cli.py expand "ggg⌘"
 python3 scripts/typinator_cli.py quick-search "git"
 ```
 
+### 13. Restart Application (Frozen / Stalled Recovery)
+```bash
+# Gracefully quit and relaunch Typinator
+typinator restart
+
+# Force SIGKILL and relaunch immediately
+typinator restart --force
+```
+
 ---
 
 ## Marker & Syntax Reference

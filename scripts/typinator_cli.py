@@ -12,10 +12,11 @@ import re
 import json
 import argparse
 import subprocess
+import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 
 NESTED_REFERENCE_PATTERN = re.compile(r'\{"([^"\n]+)"\}')
 
@@ -1015,6 +1016,84 @@ def quick_search(query: str = "") -> str:
     return run_applescript(sc)
 
 
+def restart_typinator(force: bool = False, timeout_sec: int = 5) -> Dict[str, Any]:
+    """
+    Safely restart the Typinator macOS application.
+    Recovers from frozen, unresponsive, or stalled event-tap states.
+    Attempts a graceful AppleScript quit first, falling back to SIGTERM/SIGKILL if
+    unresponsive or when force=True. Relaunches /Applications/Typinator.app and verifies
+    clean startup.
+    """
+    res = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True, text=True)
+    pids = [int(p) for p in res.stdout.strip().split() if p.isdigit()]
+    old_pids = list(pids)
+    quit_method = "none"
+
+    if pids:
+        if not force:
+            try:
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "Typinator" to quit'],
+                    capture_output=True,
+                    timeout=3
+                )
+                quit_method = "applescript_graceful"
+            except Exception:
+                pass
+
+            start = time.time()
+            while time.time() - start < 3.0:
+                time.sleep(0.3)
+                chk = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True, text=True)
+                if not chk.stdout.strip():
+                    break
+
+        chk = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True, text=True)
+        remaining = [int(p) for p in chk.stdout.strip().split() if p.isdigit()]
+        if remaining:
+            quit_method = "forced_sigkill"
+            for p in remaining:
+                try:
+                    os.kill(p, 9)
+                except ProcessLookupError:
+                    pass
+                except Exception:
+                    subprocess.run(["kill", "-9", str(p)], check=False)
+            time.sleep(0.5)
+
+    app_path = "/Applications/Typinator.app"
+    if not os.path.exists(app_path):
+        raise FileNotFoundError(f"Typinator application not found at '{app_path}'")
+
+    launch_res = subprocess.run(["open", "-a", app_path], capture_output=True, text=True)
+    if launch_res.returncode != 0:
+        raise RuntimeError(f"Failed to launch Typinator: {launch_res.stderr.strip()}")
+
+    new_pid = None
+    start = time.time()
+    while time.time() - start < timeout_sec:
+        time.sleep(0.3)
+        chk = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True, text=True)
+        found = [int(p) for p in chk.stdout.strip().split() if p.isdigit()]
+        if found:
+            new_pid = found[0]
+            break
+
+    if not new_pid:
+        raise TimeoutError(f"Typinator failed to spawn within {timeout_sec} seconds after launch.")
+
+    time.sleep(0.5)
+    status_info = get_status()
+
+    return {
+        "status": "restarted",
+        "old_pids": old_pids,
+        "new_pid": new_pid,
+        "quit_method": quit_method,
+        "app_status": status_info
+    }
+
+
 # --- CLI Interface ---
 
 def main():
@@ -1107,6 +1186,15 @@ def main():
     # quick-search
     p_qs = subparsers.add_parser("quick-search", help="Open Typinator quick search popup")
     p_qs.add_argument("query", nargs="?", default="", help="Optional search prefill")
+
+    # restart
+    p_restart = subparsers.add_parser(
+        "restart",
+        help="Restart Typinator application (recovers frozen, hung, or unresponsive state)",
+        description="Restart Typinator application (recovers frozen, hung, or unresponsive state)"
+    )
+    p_restart.add_argument("-f", "--force", action="store_true", help="Force immediate SIGKILL without attempting graceful quit")
+    p_restart.add_argument("--json", action="store_true", help="Output raw JSON")
 
     args = parser.parse_args()
 
@@ -1352,6 +1440,22 @@ def main():
         elif args.command == "quick-search":
             quick_search(args.query)
             print("✅ Quick search palette opened.")
+
+        elif args.command == "restart":
+            res = restart_typinator(force=args.force)
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            else:
+                old_str = ", ".join(map(str, res["old_pids"])) if res["old_pids"] else "None (was not running)"
+                print("🔄 Typinator restarted successfully.")
+                print(f"  Old PID(s):   {old_str}")
+                print(f"  New PID:      {res['new_pid']}")
+                print(f"  Quit Method:  {res['quit_method']}")
+                app_stat = res.get("app_status", {})
+                if app_stat.get("status") == "running":
+                    print(f"  Status:       🟢 Running ({app_stat.get('total_rules', 0)} rules in {app_stat.get('enabled_rule_sets', 0)} active sets)")
+                else:
+                    print(f"  Status:       ⚠️ {app_stat.get('status', 'unknown')}")
 
     except (LookupError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
