@@ -12,6 +12,12 @@ on:
       - '**.md'
       - 'docs/**'
   workflow_dispatch:
+    inputs:
+      include_macos:
+        description: "Run on macos-latest (10x billing multiplier on private repos)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -19,7 +25,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-latest
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos) && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       matrix:
         python-version: ["3.12"]
