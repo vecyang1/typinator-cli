@@ -5,6 +5,12 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026-10-19] - 2026-10-19
+
+### Maintenance
+- Enforce GitHub Actions quota hygiene (ubuntu-latest default, concurrency, paths-ignore) (`cef464d`)
+- Enforce GitHub Actions quota hygiene (ubuntu-latest default, concurrency, paths-ignore) (`4953019`)
+
 ## [1.4.0] - 2026-10-17
 
 ### Added
@@ -40,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Duplicate Broken Rule Pruning**: Removed broken duplicate rule `tw⇧` (`/{delay:0.25}{tab}`) in `AI prompt`, keeping canonical `tw⇧` and `baa⇧` intact.
 
 ### Audited
-- **Cadence Sidecar Health Audit & E2E Validation**: Inspected 68 cadence cards across Antigravity, Claude, Codex, and launchd runtimes via `cadence_ctl doctor`. Verified live runtime execution for 6 active sidecars (`beeper-video-ideas-curator`, `glintmuse-social-team-pulse`, `portfolio-link-sentinel`, `receipt-finance-ops-sentinel`, `xinchaovi-student-balance-monitor`, `loi-da-nang-rent-audit`), all passing with zero errors.
+- **Cadence Sidecar Health Audit & E2E Validation**: Inspected 68 cadence cards across Antigravity, Claude, Codex, and launchd runtimes via `cadence_ctl doctor`. Verified live runtime execution for 6 active sidecars (`beeper-video-ideas-curator`, `storefront-social-team-pulse`, `portfolio-link-sentinel`, `receipt-finance-ops-sentinel`, `academy-student-balance-monitor`, `loi-da-nang-rent-audit`), all passing with zero errors.
 
 ## [2026-09-12] - 2026-09-12
 
