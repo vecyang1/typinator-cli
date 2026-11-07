@@ -94,48 +94,46 @@ Typinator natively supports referencing another abbreviation dynamically:
 
 ---
 
-## 7. AI Slash Command & Chip Autocomplete Strategy (Antigravity / Gemini / Codec)
+## 7. AI Slash Command Strategy (Paseo / Antigravity / Gemini / Claude Code / Codex)
 
-Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use structured slash-command "chips" or "pills" (e.g. `[⏱️ goal]`) rather than raw text.
+Across Paseo (`module 4869` / `module 4872`), Antigravity, Claude Code, Cursor, and Codex, slash commands and skills must use the **canonical full command name + trailing space (` /<command> `)** with **zero `{delay:...}{tab}`**:
 
 ### The Golden Formula:
 ```text
-/<command>{delay:0.25}{tab}
+ /<command> 
 ```
 
 ### Key Invariants:
-1. **Full Command Name (`/goal` vs `/g` or `/go`)**:
-   - Typing only `/g` is ambiguous if the workspace or platform offers multiple commands (e.g. `/goal` and `/grill-me`).
-   - Typing the full name `/goal` uniquely resolves the match across all AI IDEs and prevents dropdown mis-selection.
-2. **The 250ms Delay Window (`{delay:0.25}`)**:
-   - Typing `/goal` triggers asynchronous React/Vue UI state transitions to mount and filter the command menu.
-   - Sending `{tab}` with 0ms delay causes a race condition: the browser executes native Tab navigation (blurring input or focusing UI buttons) before the autocomplete listener is ready.
-   - `{delay:0.25}` gives ~15-20 frames for the UI thread to mount and select the item while remaining imperceptibly instantaneous to the user.
-3. **The Keystroke Marker (`{tab}`)**:
-   - Converts the filtered candidate into the native IDE badge/pill `[⏱️ goal]`.
-4. **Suffix Convention (`⇧` for Prompts/Commands, `⌘` for URLs)**:
-   - Standardize on `...⇧` for AI goal execution and prompts, reserving `...⌘` for URLs (e.g. Grok) to avoid cross-set trigger collisions.
+1. **Full Canonical Command/Skill Name (`/starting-with-readiness` vs `/starting-with`)**:
+   - Always write the complete canonical skill or slash command name (e.g. ` /starting-with-readiness `, ` /finishing-with-writeback `, ` /image-gen-with-api `, ` /betterlinks-wordpress `, ` /fluentcommunity-ops `, ` /fluentcrm-ops `, ` /hyperdx-telemetry `, ` /tikhub-social-data `, ` /gemini-deep-research-cli `, ` /chrome-devtools `, ` /adspower-browser `).
+2. **Never Use `{delay:0.25}{tab}` in Slash Commands**:
+   - In Paseo (`findActiveSlashCommand`, `module 4872`), any slash command preceded by a space or inline text (`position: "inline"`) or any skill not in Paseo's provider list displays `No commands found` (`s.options.length === 0`).
+   - In Paseo's `useAutocomplete` (`module 4869`), when `0 === s.options.length`, Paseo **does NOT call `t.preventDefault()` on `Tab`**. Sending `{tab}` executes native browser Tab navigation, jumping DOM focus out of the `<textarea>` onto the `+` (`Add attachment`) `<button>`, stranding the cursor, dropping all trailing text/paste, and causing any trailing `Space` or `{return}` to click the `+` file-upload button!
+   - Conversely, even when Paseo's `/` menu *does* match a command, `applySlashCommandReplacement` (`module 4872`) literally outputs `/<command> ` (command + space), and typing a plain space `' '` immediately closes the `/` popup (`const o = /[/\s\n\r\t"']/;`) while keeping focus 100% inside `<textarea>`.
+3. **Suffix Convention (`⇧` for Prompts/Commands, `⌘` for URLs/Midjourney)**:
+   - Standardize on `...⇧` for AI prompts and skills, and `...⌘` for URLs and app-specific triggers (e.g. `Midjourney` uses `img⌘` -> `/imagine ` so `img⇧` in `AI prompt` is never prefix-shadowed).
 
-### Standardized AI Slash Command Matrix (Active in `AI prompt`):
+### Standardized AI Slash Command Matrix (Active in `AI prompt` & `Urls(browswers)`):
 
 | Abbr | Expansion | Token / Command | Description |
 |---|---|---|---|
-| `g⇧` | `/goal{delay:0.25}{tab}` | `[⏱️ goal]` | Background long-running goal loop |
-| `br⇧` | `/browser{delay:0.25}{tab}` | `[browser]` | Web browser automation & search |
-| `glm⇧` | `/grill-me{delay:0.25}{tab}` | `[grill-me]` | Interactive critical design interview |
+| `gg⇧` / `g⇧` | ` /goal ` / `{"gg⇧"}{return}` | `/goal` | Background long-running goal loop (`g⇧` auto-submits) |
+| `br⇧` | ` /browser ` | `/browser` | Web browser automation & search |
+| `glm⇧` | ` /grill-me ` | `/grill-me` | Interactive critical design interview |
 | `sc⇧` / `scc⇧` | ` /scheduled-task-rescheduler for above to see if need create cadance or audit, updates ; {"pt⇧"} {"cj⇧"}...` | `/scheduled-task-rescheduler` | Scheduled task cadence & sidecar audit prompt (`scc⇧` appends `{return}`) |
 | `pt⇧` | `plz scan patterns, ur log or other intake data source /feedback source and see how should be productive enough as input and audit sidecard if need;...` | Sub-block | Pattern & intake/feedback sidecar audit block referenced by `sc⇧` |
-| `bo⇧` / `bs⇧` | `/boost{delay:0.25}{tab}` | `[boost]` | Multi-perspective deep reasoning mode (`bo⇧` in `AI prompt`, `bs⇧` in `Urls(browswers)`) |
-| `lr⇧` | `/learn{delay:0.25}{tab}` | `[learn]` | Persist workflow behaviors & patterns |
-| `tw⇧` | `/teamwork-preview{delay:0.25}{tab}` | `[teamwork-preview]` | Multi-agent collaboration preview |
-| `gf⇧` | `/graphify{delay:0.25}{tab}` | `[graphify]` | Codebase knowledge graph analysis |
-| `cp⇧` | `/compact{delay:0.25}{tab}` | `[compact]` | Context window compaction |
-| `cl⇧` | `/clear{delay:0.25}{tab}` | `/clear` | Clear session / conversation history |
-| `btw⇧` | `/btw{delay:0.25}{tab}` | `[btw]` | Ask side question without interrupting main flow |
-| `nm⇧` | `/notion-mcp-connector{delay:0.25}{tab}` | `[notion-mcp-connector]` | Notion MCP connector skill (`not⇧` points to `{"ns⇧"}`) |
-| `im⇧` / `ig⇧` | `/image-gen-with-api{delay:0.25}{tab}` | `[image-gen-with-api]` | Image generation via API skill |
+| `bo⇧` / `bs⇧` | ` /boost ` / ` /boost proactively if need or solo mode; ` | `/boost` | Multi-perspective deep reasoning mode (`bo⇧` in `AI prompt`, `bs⇧` in `Urls(browswers)`) |
+| `lr⇧` | ` /learn ` | `/learn` | Persist workflow behaviors & patterns |
+| `tw⇧` / `baa⇧` | ` /teamwork-preview ` | `/teamwork-preview` | Multi-agent collaboration preview |
+| `gf⇧` | ` /graphify ` | `/graphify` | Codebase knowledge graph analysis |
+| `cp⇧` | ` /compact {return}` | `/compact` | Context window compaction |
+| `cl⇧` | ` /clear ` | `/clear` | Clear session / conversation history |
+| `bt⇧` / `btt⇧` | ` /btw {return}` | `/btw` | Ask side question without interrupting main flow |
+| `ns⇧` / `nt⇧` / `not⇧` | ` /notion-mcp-connector ` | `/notion-mcp-connector` | Notion MCP connector skill (`not⇧` points to `{"ns⇧"}`) |
+| `img⇧` / `im⇧` / `ig⇧` | ` /image-gen-with-api ` | `/image-gen-with-api` | Image generation via API skill (`img⇧` and `ig⇧` alias `{"im⇧"}`; `Midjourney` uses `img⌘`) |
+| `cz⇧` | ` /image-gen-with-api via chatgpt2api-ops ` | `/image-gen-with-api` | Image generation via `chatgpt2api-ops` |
 | `sk⇧` | ` /skill-creator do i need or absorb or skip; ` | `/skill-creator` | Atomic skill-creator evaluation prompt |
-| `ski⇧` | `/skill-improver{delay:0.25}{tab}` | `[skill-improver]` | Meta-skill for hardening and evolving skills |
+| `ski⇧` | ` /skill-improver ` | `/skill-improver` | Meta-skill for hardening and evolving skills |
 | `wc⇧` | ` /wheel-check or use context7 ... /1password if need; /graphify` | `/wheel-check ...` | Atomic tab-free wheel-check + anti-fragmentation + UI observability + 1Password + Graphify macro (stored in `AI prompt.tyset/X3EF1387A`) |
 
 ---

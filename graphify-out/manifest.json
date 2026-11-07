@@ -36,9 +36,9 @@
     "semantic_hash": ""
   },
   "scripts/typinator_cli.py": {
-    "mtime": 1794053474.843928,
-    "seen": 1794053694.0519319,
-    "ast_hash": "da676037112baab030b6c7a6bd9922d1",
+    "mtime": 1794057010.9661834,
+    "seen": 1794057181.520035,
+    "ast_hash": "f9d67e3d4ec2c8f8bbfb34709cca6332",
     "semantic_hash": ""
   },
   "tests/__init__.py": {
@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "tests/test_audit.py": {
-    "mtime": 1794053530.5505588,
-    "seen": 1794053694.051934,
-    "ast_hash": "a9d290b52fa9182779d709b8606106d0",
+    "mtime": 1794057106.2170873,
+    "seen": 1794057181.5200372,
+    "ast_hash": "2818d655ca7fa5b324cc82a907088115",
     "semantic_hash": ""
   },
   "tests/test_escaping.py": {
@@ -114,9 +114,9 @@
     "semantic_hash": ""
   },
   "references/syntax_and_markers.md": {
-    "mtime": 1794055753.7511365,
-    "seen": 1794055834.660537,
-    "ast_hash": "423400fd2d41c5041e5bd5e68513e9f8",
+    "mtime": 1794057142.3728337,
+    "seen": 1794057181.5200691,
+    "ast_hash": "7281a38fb4000995a879810002b5e663",
     "semantic_hash": ""
   },
   "resources/README.md": {

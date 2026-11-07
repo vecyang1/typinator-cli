@@ -55,6 +55,42 @@ TYPINATOR_APP_PATH = "/Applications/Typinator.app"
 QUIET_LAUNCH_ARGS = ["--args", "-Open Window at Start", "NO"]
 
 NESTED_REFERENCE_PATTERN = re.compile(r'\{"([^"\n]+)"\}')
+REVERSED_TAB_DELAY_PATTERN = re.compile(r'\{tab\}\s*(\{delay:[^}]+\})', re.IGNORECASE)
+MALFORMED_NESTED_REF_PATTERN = re.compile(r'\{\{"([^"\n]+)"\}\}')
+DELAY_TAB_SEQUENCE_PATTERN = re.compile(r'\{delay:[^}]+\}\s*\{tab\}', re.IGNORECASE)
+KEY_MARKER_STRIP_PATTERN = re.compile(r'\{(?:return|enter|tab|delay:[^}]+|key:[^}]+)\}', re.IGNORECASE)
+CLIPBOARD_PASTE_CHAR_THRESHOLD = 100
+DIRECT_STRING_MAX_CHARS = 200
+DIRECT_STRING_EXCEPTIONS = ("--", '"', "'")
+
+# In-process cache of rules mutated via AppleScript before Typinator flushes .tyset to disk
+_RECENT_IN_MEMORY_UPDATES: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+
+def resolve_nested_expansion(
+    abbr: str,
+    rules_by_abbr: Dict[str, str],
+    raw_expansion: Optional[str] = None,
+    _visited: Optional[set] = None
+) -> str:
+    """
+    Recursively resolve Typinator nested references `{"other_abbr"}` into the final flat string.
+    Guards against self-recursion and cyclic references via `_visited`.
+    """
+    if _visited is None:
+        _visited = set()
+    if abbr in _visited:
+        return f"[CYCLE:{abbr}]"
+    _visited = _visited | {abbr}
+    exp = raw_expansion if raw_expansion is not None else rules_by_abbr.get(abbr, "")
+
+    def _repl(match: re.Match) -> str:
+        ref = match.group(1)
+        if ref not in rules_by_abbr:
+            return match.group(0)
+        return resolve_nested_expansion(ref, rules_by_abbr, _visited=_visited)
+
+    return NESTED_REFERENCE_PATTERN.sub(_repl, exp)
 
 INVISIBLE_CHARS_MAP = {
     '\u2028': 'LINE_SEPARATOR (\\u2028)',
@@ -391,6 +427,14 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
             ww_flags = []
             table_content = content
 
+        s_name_clean = s_name.strip()
+        live_rules_map: Dict[str, Dict[str, Any]] = {}
+        if os.path.isdir(DEFAULT_LIVE_SETS):
+            try:
+                live_rules_map = load_set_rules_at_ref(s_name_clean, ref="LIVE")
+            except Exception:
+                live_rules_map = {}
+
         rule_idx = 0
         for line in table_content.splitlines():
             parts = line.split("\t")
@@ -400,15 +444,35 @@ def search_rules(query: str = "", set_name: Optional[str] = None, deep: bool = F
                 exp_or_desc = "\t".join(parts[2:]) if len(parts) > 2 else ""
                 is_ww = ww_flags[rule_idx] if rule_idx < len(ww_flags) else False
 
-                if not query or (q_lower in abbr.lower() or q_lower in exp_or_desc.lower()):
+                cached = _RECENT_IN_MEMORY_UPDATES.get((s_name_clean, abbr))
+                live_rule = live_rules_map.get(abbr)
+                if cached is not None:
+                    exp_val = cached.get("expansion", exp_or_desc)
+                    desc_val = cached.get("description", "")
+                elif live_rule is not None:
+                    # Typinator's OSA `rule table` returns `description` (comment) in column 3
+                    # instead of `expansion` whenever `description` is non-empty, and flattens
+                    # multiline / external X* payloads. Overlay the decoded .tyset rule payload.
+                    exp_val = live_rule.get("expansion", exp_or_desc)
+                    desc_val = live_rule.get("description", "")
+                else:
+                    exp_val = exp_or_desc
+                    desc_val = ""
+
+                if not query or (
+                    q_lower in abbr.lower()
+                    or q_lower in exp_val.lower()
+                    or q_lower in desc_val.lower()
+                    or q_lower in exp_or_desc.lower()
+                ):
                     results.append({
-                        "set": s_name.strip(),
+                        "set": s_name_clean,
                         "set_enabled": s_enabled,
                         "set_priority": set_priority_val,
                         "rule_index": rule_idx,
                         "abbreviation": abbr,
-                        "expansion": exp_or_desc,
-                        "description": "",
+                        "expansion": exp_val,
+                        "description": desc_val,
                         "id": uid,
                         "whole_word": is_ww
                     })
@@ -526,6 +590,15 @@ def set_rule_expansion(
     '''
     res = run_applescript(sc)
     ok = bool(res)
+    if ok:
+        final_exp = expansion if expansion is not None else (old_rule.get("expansion", "") if old_rule else "")
+        final_desc = description if description is not None else (old_rule.get("description", "") if old_rule else "")
+        final_ww = whole_word if whole_word is not None else (old_rule.get("whole_word", False) if old_rule else False)
+        _RECENT_IN_MEMORY_UPDATES[(set_name, abbreviation)] = {
+            "expansion": final_exp,
+            "description": final_desc,
+            "whole_word": final_ww,
+        }
     if ok and old_rule:
         record_mutation_journal(
             action="update",
@@ -562,6 +635,11 @@ def add_rule(
     '''
     uid = run_applescript(sc)
     if uid:
+        _RECENT_IN_MEMORY_UPDATES[(set_name, abbreviation)] = {
+            "expansion": expansion,
+            "description": description,
+            "whole_word": whole_word,
+        }
         record_mutation_journal(
             action="create",
             set_name=set_name,
@@ -589,6 +667,7 @@ def delete_rule(set_name: str, abbreviation: str) -> bool:
     res = run_applescript(sc)
     ok = res == "OK"
     if ok:
+        _RECENT_IN_MEMORY_UPDATES.pop((set_name, abbreviation), None)
         record_mutation_journal(
             action="delete",
             set_name=set_name,
@@ -801,18 +880,27 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
 
         trie.insert(r)
 
-    # 4. Invisible character & nested reference checks
+    # 4. Invisible character, marker syntax, paste-race hazard & nested reference checks
     if set_name:
         target_rules = [r for r in global_rules if r["set"] == set_name]
     else:
         target_rules = global_rules
 
+    # Map highest-priority active expansion per abbreviation for recursive resolution
+    active_exp_by_abbr: Dict[str, str] = {}
+    for ar in active_rules:
+        a_key = ar.get("abbreviation", "")
+        if a_key and a_key not in active_exp_by_abbr:
+            active_exp_by_abbr[a_key] = ar.get("expansion", "")
+
     for r in target_rules:
         abbr = r.get("abbreviation", "")
         exp = r.get("expansion", "")
         s_name = r.get("set", "")
+        updated_exp = exp
+        needs_save = False
 
-        found_inv = [desc for ch, desc in INVISIBLE_CHARS_MAP.items() if ch in exp]
+        found_inv = [desc for ch, desc in INVISIBLE_CHARS_MAP.items() if ch in updated_exp]
         if found_inv:
             issue_item = {
                 "type": "invisible_character",
@@ -823,13 +911,40 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
             }
             issues.append(issue_item)
             if fix:
-                clean_exp = exp
                 for ch in INVISIBLE_CHARS_MAP:
-                    clean_exp = clean_exp.replace(ch, "\n" if ch in ['\u2028', '\u2029'] else "")
-                set_rule_expansion(s_name, abbr, expansion=clean_exp)
-                fixed_count += 1
+                    updated_exp = updated_exp.replace(ch, "\n" if ch in ['\u2028', '\u2029'] else "")
+                needs_save = True
 
-        for match in NESTED_REFERENCE_PATTERN.finditer(exp):
+        if REVERSED_TAB_DELAY_PATTERN.search(updated_exp):
+            issues.append({
+                "type": "reversed_tab_delay",
+                "set": s_name,
+                "abbreviation": abbr,
+                "raw_expansion": repr(exp),
+                "note": "Reversed '{tab}{delay:...}' fires Tab before the slash dropdown renders; must be '{delay:...}{tab}'."
+            })
+            if fix:
+                updated_exp = REVERSED_TAB_DELAY_PATTERN.sub(r'\1{tab}', updated_exp)
+                needs_save = True
+
+        if MALFORMED_NESTED_REF_PATTERN.search(updated_exp):
+            issues.append({
+                "type": "malformed_nested_reference",
+                "set": s_name,
+                "abbreviation": abbr,
+                "raw_expansion": repr(exp),
+                "note": 'Double-braced \'{{"abbr"}}\' leaves literal braces around nested expansion; must be \'{"abbr"}\'.'
+            })
+            if fix:
+                updated_exp = MALFORMED_NESTED_REF_PATTERN.sub(r'{"\1"}', updated_exp)
+                needs_save = True
+
+        if needs_save and fix:
+            set_rule_expansion(s_name, abbr, expansion=updated_exp)
+            active_exp_by_abbr[abbr] = updated_exp
+            fixed_count += 1
+
+        for match in NESTED_REFERENCE_PATTERN.finditer(updated_exp):
             ref_abbr = match.group(1)
             if ref_abbr == abbr:
                 issues.append({
@@ -855,6 +970,28 @@ def audit_rules(fix: bool = False, set_name: Optional[str] = None) -> Dict[str, 
                     "target_abbreviation": ref_abbr,
                     "active_in_sets": global_abbr_to_sets[ref_abbr],
                     "note": f"Referenced abbreviation '{ref_abbr}' exists in multiple active sets: {global_abbr_to_sets[ref_abbr]}. Higher ranked set will shadow lower sets."
+                })
+
+        if r.get("set_enabled", True) and abbr:
+            resolved_exp = resolve_nested_expansion(abbr, active_exp_by_abbr, raw_expansion=updated_exp)
+            dt_matches = list(DELAY_TAB_SEQUENCE_PATTERN.finditer(resolved_exp))
+            if dt_matches:
+                trailing_text = KEY_MARKER_STRIP_PATTERN.sub("", resolved_exp[dt_matches[0].end():])
+                issues.append({
+                    "type": "multi_tab_paste_hazard",
+                    "set": s_name,
+                    "abbreviation": abbr,
+                    "delay_tab_count": len(dt_matches),
+                    "first_delay_tab_offset": dt_matches[0].start(),
+                    "trailing_segment_length": len(trailing_text),
+                    "resolved_length": len(resolved_exp),
+                    "note": (
+                        f"Resolved expansion ({len(resolved_exp)} chars) has {len(dt_matches)} '{{delay:...}}{{tab}}' sequence(s) "
+                        f"(first at char {dt_matches[0].start()}, trailing text {len(trailing_text)} chars). "
+                        f"In Paseo and web/Electron chat composers, '{{delay:...}}{{tab}}' when 'No commands found' is shown "
+                        f"is not preventDefault()ed and jumps DOM focus from <textarea> onto the '+' button, dropping trailing text/paste and stranding the cursor. "
+                        f"Use the full canonical '/<command> ' with a plain trailing space instead of '{{delay:...}}{{tab}}'."
+                    ),
                 })
 
     if set_name:

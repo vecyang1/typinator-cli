@@ -216,6 +216,94 @@ class TestTypinatorAuditLogic(unittest.TestCase):
         self.assertEqual(rule["description"], "desc with\ttabs")
         self.assertEqual(rule["expansion_count"], 42)
 
+    @patch("typinator_cli.set_rule_expansion")
+    @patch("typinator_cli.search_rules")
+    def test_audit_reversed_tab_delay_and_malformed_nested_ref(self, mock_search, mock_set):
+        mock_search.return_value = [
+            {
+                "abbreviation": "pp⇧",
+                "set": "AI prompt",
+                "set_enabled": True,
+                "set_priority": 0,
+                "rule_index": 0,
+                "whole_word": False,
+                "expansion": "/plan{tab}{delay:0.25}",
+            },
+            {
+                "abbreviation": "ct⌘",
+                "set": "AI prompt",
+                "set_enabled": True,
+                "set_priority": 0,
+                "rule_index": 1,
+                "whole_word": False,
+                "expansion": '{{"ct⇧"}}\n{return}',
+            },
+            {
+                "abbreviation": "ct⇧",
+                "set": "AI prompt",
+                "set_enabled": True,
+                "set_priority": 0,
+                "rule_index": 2,
+                "whole_word": False,
+                "expansion": "clean prompt",
+            },
+        ]
+        res = audit_rules(fix=True)
+        issue_types = [i["type"] for i in res["details"]]
+        self.assertIn("reversed_tab_delay", issue_types)
+        self.assertIn("malformed_nested_reference", issue_types)
+        self.assertEqual(res["fixed"], 2)
+
+    @patch("typinator_cli.search_rules")
+    def test_audit_multi_tab_paste_hazard(self, mock_search):
+        mock_search.return_value = [
+            {
+                "abbreviation": "eg⇧",
+                "set": "Urls(browswers)",
+                "set_enabled": True,
+                "set_priority": 0,
+                "rule_index": 0,
+                "whole_word": False,
+                "expansion": " /ego-browser " + ("x" * 180),
+            },
+            {
+                "abbreviation": "1p⇧",
+                "set": "Urls(browswers)",
+                "set_enabled": True,
+                "set_priority": 0,
+                "rule_index": 1,
+                "whole_word": False,
+                "expansion": " /1password{delay:0.25}{tab} if need; ",
+            },
+            {
+                "abbreviation": "gf⇧",
+                "set": "AI prompt",
+                "set_enabled": True,
+                "set_priority": 1,
+                "rule_index": 0,
+                "whole_word": False,
+                "expansion": " /graphify{delay:0.25}{tab}",
+            },
+            {
+                "abbreviation": "wc⇧",
+                "set": "AI prompt",
+                "set_enabled": True,
+                "set_priority": 1,
+                "rule_index": 1,
+                "whole_word": False,
+                "expansion": " /wheel-check{delay:0.25}{tab} " + ("y" * 250) + ' {"1p⇧"}{"gf⇧"}',
+            },
+        ]
+        res = audit_rules()
+        hazards = [i for i in res["details"] if i["type"] == "multi_tab_paste_hazard"]
+        hazard_abbrs = [h["abbreviation"] for h in hazards]
+        # eg⇧ uses a plain trailing space with 0 {delay:...}{tab} -> SAFE
+        self.assertNotIn("eg⇧", hazard_abbrs)
+        # Any rule containing {delay:...}{tab} (directly or via nested expansion) jumps focus in Paseo -> HAZARD
+        self.assertIn("1p⇧", hazard_abbrs)
+        self.assertIn("gf⇧", hazard_abbrs)
+        self.assertIn("wc⇧", hazard_abbrs)
+
 
 if __name__ == '__main__':
     unittest.main()

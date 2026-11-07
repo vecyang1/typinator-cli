@@ -1,7 +1,7 @@
 # Graph Report - 26.09.06-typinator-cli  (2026-11-07)
 
 ## Corpus Check
-- 21 files · ~20,461 words
+- 21 files · ~20,566 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 2 file(s) not represented in the graph (top: (none) 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9855e5b2`
+- Built from commit: `5326a414`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -42,20 +42,20 @@
 6. `run_applescript()` - 16 edges
 7. `debug_trigger()` - 15 edges
 8. `CLI Reference` - 15 edges
-9. `TestTypinatorCli` - 14 edges
-10. `get_rule()` - 14 edges
+9. `get_rule()` - 14 edges
+10. `TestTypinatorCli` - 14 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Added` --references--> `PrefixTrie`  [INFERRED]
   CHANGELOG.md → scripts/typinator_cli.py
 - `Fixed` --references--> `launch_typinator_quietly()`  [INFERRED]
   CHANGELOG.md → scripts/typinator_cli.py
-- `Fixed` --references--> `get_rule()`  [INFERRED]
-  CHANGELOG.md → scripts/typinator_cli.py
+- `Module Map` --references--> `escape_as()`  [INFERRED]
+  docs/architecture.md → scripts/typinator_cli.py
 - `Fixed` --references--> `search_rules()`  [INFERRED]
   CHANGELOG.md → scripts/typinator_cli.py
-- `Module Map` --references--> `audit_rules()`  [INFERRED]
-  docs/architecture.md → scripts/typinator_cli.py
+- `Fixed` --references--> `get_rule()`  [INFERRED]
+  CHANGELOG.md → scripts/typinator_cli.py
 
 ## Import Cycles
 - None detected.
@@ -92,7 +92,7 @@ Nodes (14): Add a Rule, Application Interface, Classes & Properties, Common Code
 
 ### Community 8 - "Typinator Marker Syntax & Keystroke Reference"
 Cohesion: 0.11
-Nodes (19): 1. Keystroke Markers, 2. Delay & Pause Markers, 3. Inline Scripts, 4. Known Pitfalls & Gotchas, 5. Trigger Suffix Conventions & Modifier Symbols, 6. Nested Snippets & Abbreviation Inclusion (SSOT), 7. AI Slash Command & Chip Autocomplete Strategy (Antigravity / Gemini / Codec), 8. Prefix Shadowing & Collision Mechanics (Typinator Evaluation Engine) (+11 more)
+Nodes (19): 1. Keystroke Markers, 2. Delay & Pause Markers, 3. Inline Scripts, 4. Known Pitfalls & Gotchas, 5. Trigger Suffix Conventions & Modifier Symbols, 6. Nested Snippets & Abbreviation Inclusion (SSOT), 7. AI Slash Command Strategy (Paseo / Antigravity / Gemini / Claude Code / Codex), 8. Prefix Shadowing & Collision Mechanics (Typinator Evaluation Engine) (+11 more)
 
 ### Community 10 - "System Architecture Map - 26.09.06-typinator-cli"
 Cohesion: 0.22
