@@ -20,7 +20,7 @@ import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple, Callable
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 
 def _resolve_default_sync_repo() -> str:
     env_val = os.environ.get("TYPINATOR_SYNC_REPO")

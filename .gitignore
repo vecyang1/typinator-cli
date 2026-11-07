@@ -40,3 +40,6 @@ PROJECT_LINKS.md
 MEMORY.md
 operations/
 vault/
+
+# Graphify knowledge graph outputs
+graphify-out/
