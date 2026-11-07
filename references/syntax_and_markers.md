@@ -123,7 +123,8 @@ Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use st
 | `g⇧` | `/goal{delay:0.25}{tab}` | `[⏱️ goal]` | Background long-running goal loop |
 | `br⇧` | `/browser{delay:0.25}{tab}` | `[browser]` | Web browser automation & search |
 | `glm⇧` | `/grill-me{delay:0.25}{tab}` | `[grill-me]` | Interactive critical design interview |
-| `sc⇧` | `/schedule{delay:0.25}{tab}` | `[schedule]` | One-shot timers or recurring cron jobs |
+| `sc⇧` / `scc⇧` | ` /scheduled-task-rescheduler for above to see if need create cadance or audit, updates ; {"pt⇧"} {"cj⇧"}...` | `/scheduled-task-rescheduler` | Scheduled task cadence & sidecar audit prompt (`scc⇧` appends `{return}`) |
+| `pt⇧` | `plz scan patterns, ur log or other intake data source /feedback source and see how should be productive enough as input and audit sidecard if need;...` | Sub-block | Pattern & intake/feedback sidecar audit block referenced by `sc⇧` |
 | `bo⇧` / `bs⇧` | `/boost{delay:0.25}{tab}` | `[boost]` | Multi-perspective deep reasoning mode (`bo⇧` in `AI prompt`, `bs⇧` in `Urls(browswers)`) |
 | `lr⇧` | `/learn{delay:0.25}{tab}` | `[learn]` | Persist workflow behaviors & patterns |
 | `tw⇧` | `/teamwork-preview{delay:0.25}{tab}` | `[teamwork-preview]` | Multi-agent collaboration preview |
@@ -131,11 +132,11 @@ Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use st
 | `cp⇧` | `/compact{delay:0.25}{tab}` | `[compact]` | Context window compaction |
 | `cl⇧` | `/clear{delay:0.25}{tab}` | `/clear` | Clear session / conversation history |
 | `btw⇧` | `/btw{delay:0.25}{tab}` | `[btw]` | Ask side question without interrupting main flow |
-| `nm⇧` / `not⇧` | `/notion-mcp-connector{delay:0.25}{tab}` | `[notion-mcp-connector]` | Notion MCP connector skill |
+| `nm⇧` | `/notion-mcp-connector{delay:0.25}{tab}` | `[notion-mcp-connector]` | Notion MCP connector skill (`not⇧` points to `{"ns⇧"}`) |
 | `im⇧` / `ig⇧` | `/image-gen-with-api{delay:0.25}{tab}` | `[image-gen-with-api]` | Image generation via API skill |
-| `skc⇧` | `/skill-creator{delay:0.25}{tab}` | `[skill-creator]` | Meta-skill for authoring new skills |
+| `sk⇧` | ` /skill-creator do i need or absorb or skip; ` | `/skill-creator` | Atomic skill-creator evaluation prompt |
 | `ski⇧` | `/skill-improver{delay:0.25}{tab}` | `[skill-improver]` | Meta-skill for hardening and evolving skills |
-| `wc⇧` | ` /wheel-check{delay:0.25}{tab} or use context7 ... {"1p⇧"}{"gf⇧"}` | `[wheel-check] ... [1password] [graphify]` | Composite wheel-check + anti-fragmentation + UI observability + 1Password + Graphify macro (stored in `AI prompt.tyset/X3EF1387A`) |
+| `wc⇧` | ` /wheel-check or use context7 ... /1password if need; /graphify` | `/wheel-check ...` | Atomic tab-free wheel-check + anti-fragmentation + UI observability + 1Password + Graphify macro (stored in `AI prompt.tyset/X3EF1387A`) |
 
 ---
 
@@ -180,4 +181,30 @@ The tool prints:
 - Related rules across active sets sharing identical expansions (e.g. `bo⇧` and `bs⇧` for `/boost`).
 - Actionable resolution strategies (prefix change, whole-word adjustment, or set reordering).
 - Preflight simulation warning if adding a trigger would be shadowed or disable lower-priority rules.
+
+---
+
+## 9. The 200-Char `directString` Clipboard Threshold + Paseo `No commands found` `{tab}` Focus Jump
+
+### Binary Internals (`Typinator 9.2` @ `0x1000bf63a` & `AppSettings.plist` + Paseo `module 4869`):
+In `-[TYStringPiece needsClipboard]` (`0x1000bf63a`) and `/Applications/Typinator.app/Contents/Resources/AppSettings.plist`:
+1. **`directString = 200` (`0x1000bf715`–`0x1000bf752`)**:
+   - Any text piece with `length <= 200` characters, containing none of `directException = "/--/\"/\'/"` (`--`, `"`, `'`), and `splitPostingPartsForString: <= 20` returns `needsClipboard = NO (0)`. Typinator sends it via `-[TYKeyGenerator sendString:]` (`CGEventKeyboardSetUnicodeString` direct keystroke stream).
+   - Any text piece with **`length > 200` characters** (or containing `--`, `"`, `'`) returns **`needsClipboard = YES (1)`** (`0x1000bfadd`), forcing Typinator to send that piece via **`⌘V` Clipboard Paste (`copyToClipboard` + `Cmd+V`)**.
+2. **Paseo `No commands found` Tab Behavior (`module 4869` & `module 4872`)**:
+   - When an expansion starts with a leading space and slash command (`" /wheel-check"` or `" /ego-browser"`), Paseo's `findActiveSlashCommand` classifies it as `position: "inline"` and filters for `source === "provider" && command.kind === "skill"`.
+   - In Paseo's Antigravity (`Gemini 4 Argon`) sessions, `s.options` is empty (`No commands found`).
+   - In `useAutocomplete` (`module 4869`): `if (!s.isVisible || 0 === s.options.length) return !1;` — when `No commands found` is displayed, Paseo **does NOT call `t.preventDefault()` on `Tab`**, so `{delay:0.25}{tab}` executes a native browser `Tab` and jumps DOM focus from `<textarea>` onto the `+` (`Add attachment`) `<button>`!
+   - When the trailing text piece after `{tab}` exceeds **200 characters** (like `wc⇧` at 349 chars, vs `eg⇧` at 199 chars), Typinator sends the trailing piece via **`⌘V` Clipboard Paste**, which is **100% ignored/dropped by the focused `+` `<button>`**!
+
+### The Golden Safe-Expansion Rules (Enforced by `typinator audit`):
+1. **Never Use `{delay:0.25}{tab}` When Followed by `> 200` Chars (or Quotes/`--`), or When the Full `/skill-name` Is Already Followed by Prompt Text**:
+   - In Paseo (`applySlashCommandReplacement`, `module 4872`), selecting a slash command with `Tab` literally outputs `/command ` (command name + trailing space), and typing a space after `/command` immediately closes the `/` popup (`const o = /[/\s\n\r\t"']/;`).
+   - Therefore, long prompt macros (`wc⇧`, `wcc⇧`, `sc⇧`, `scc⇧`, `sk⇧`, `mm⇧`, `mmm⇧`, `zq⇧`, `bag⇧`, `eg⇧`, `ggg⇧`, `egm⇧`, `egg⇧`) use a plain space after `/wheel-check`, `/scheduled-task-rescheduler`, `/skill-creator`, `/memory-vault`, or `/ego-browser` with **zero `{delay:0.25}{tab}`**, pasting the entire prompt in a single atomic `⌘V` while focus remains inside the `<textarea>`.
+2. **Modular Sub-Command Hierarchy (`0` `{tab}`s in Reusable Building Blocks)**:
+   - **Level-0 Atomic Blocks (`0` `{tab}`s)**: `fl⇧` (file-owner thinking), `crd⇧` (credentials/readiness/docs check), `dy⌘` (SSOT & unidirectional data flow), `ct⇧` (E2E verification + `{"fl⇧"}` + single-language output), `ck⇧` (context/tools/memory check), `pt⇧` (pattern/log/intake sidecar audit), `mm⇧` (`/memory-vault check or note down if need; `), `sk⇧` (`/skill-creator do i need or absorb or skip; `), `cj⇧` (`output in chinese`).
+   - **Level-1 Long Slash Prompt Macros (`0` `{tab}`s, Atomic Paste)**: `wc⇧`, `wcc⇧`, `sc⇧` (composes `{"pt⇧"} {"cj⇧"}`), `scc⇧` (`{"sc⇧"}{return}`), `mmm⇧` (`{"mm⇧"}{return}`), `eg⇧`, `ggg⇧`, `egm⇧`, `egg⇧`, `zq⇧`, `bag⇧`.
+   - **Level-2 Composite Prompts (`0` `{tab}`s, composed via `{"..."}`)**: `tl⌘` (composes `{"dy⌘"}`, `{"crd⇧"}`, `{"ct⇧"}`, `{"cj⇧"}`), `tll⌘` (extends `{"tl⌘"}`), `doc⇧` / `sv⇧` (extends `{"ct⇧"}`), `ll⇧` / `lll⇧`, `ba⇧`, `bug⇧` (extends `{"tl⌘"}`), `ss⇧`.
+
+
 
