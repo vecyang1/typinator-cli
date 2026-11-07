@@ -135,7 +135,7 @@ Modern AI IDEs (Antigravity, Cursor, VS Code, Gemini, Codec, Claude Code) use st
 | `im⇧` / `ig⇧` | `/image-gen-with-api{delay:0.25}{tab}` | `[image-gen-with-api]` | Image generation via API skill |
 | `skc⇧` | `/skill-creator{delay:0.25}{tab}` | `[skill-creator]` | Meta-skill for authoring new skills |
 | `ski⇧` | `/skill-improver{delay:0.25}{tab}` | `[skill-improver]` | Meta-skill for hardening and evolving skills |
-| `wc⇧` | `/wheel-check{delay:0.25}{tab}` | `[wheel-check]` | Search GitHub/npm before building custom wheels |
+| `wc⇧` | ` /wheel-check{delay:0.25}{tab} or use context7 ... {"1p⇧"}{"gf⇧"}` | `[wheel-check] ... [1password] [graphify]` | Composite wheel-check + anti-fragmentation + UI observability + 1Password + Graphify macro (stored in `AI prompt.tyset/X3EF1387A`) |
 
 ---
 

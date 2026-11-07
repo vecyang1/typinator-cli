@@ -23,7 +23,13 @@ Enables programmatic rule search, live in-memory expansion updates, batch export
 - 🔍 **Deep Trigger Debugging & Preflight**:
   - `typinator debug <abbr>` inspects rule activation status, shadowing causes, shadowed descendants, and duplicate triggers.
   - Preflight simulation mode to check if a new trigger is safe to register before adding it.
-- 💾 **Backup & Migration**: One-command JSON export and import for rule sets.
+- 💾 **Time Machine Version Control & Binary `.tyset` Decoder**:
+  - Offline pure-Python decoder for Typinator's binary-obfuscated `.tyset/Index` and `.tyset/X*` archives (`+[Abbreviation prepareArchiveData:]`).
+  - `typinator trace <abbr>`: walks historical Git commits in `typinator-sync` + the local pre-mutation journal (`~/.config/typinator/time-machine/mutations.jsonl`) to print the complete version evolution of any rule.
+  - `typinator diff [<ref_a>] [<ref_b>]`: compares decoded rules between any two commits or `HEAD` vs `LIVE` disk.
+  - `typinator restore-rule <commit> <set> <abbr>`: surgical single-rule recovery via AppleScript OSA with zero app restart and zero overwrite of sibling rules.
+  - `typinator snapshots` & `typinator restore-snapshot`: full-set snapshot inspection and `SIGKILL`-safe restore.
+- 📦 **Backup & Migration**: One-command JSON export and import for rule sets.
 - ⏱️ **Delay & Keystroke Support**: Full support for Typinator syntax including `{delay:1.5}`, `{tab}`, `{return}`, and key combinations (`{key:⌘↩}`).
 - 📦 **Zero External Dependencies**: Implemented strictly using Python's standard library.
 
@@ -156,6 +162,27 @@ typinator restart
 
 # Force SIGKILL and relaunch immediately
 typinator restart --force
+```
+
+### 14. Time Machine Version Trace, Diff & Recovery
+```bash
+# Trace complete historical evolution of a single rule across all Git commits
+typinator trace "wc⇧" --set "AI prompt"
+
+# Compare decoded binary .tyset rules between two snapshots (or HEAD vs LIVE disk)
+typinator diff 7532d3f 21ae618 --set "AI prompt"
+typinator diff HEAD LIVE --set "AI prompt"
+
+# Surgically restore a single rule from a historical commit (no app restart, preserves sibling rules)
+typinator restore-rule 7532d3f "AI prompt" "wc⇧" --dry-run
+typinator restore-rule 7532d3f "AI prompt" "wc⇧"
+
+# List recent Git backup snapshots with decoded rule deltas
+typinator snapshots --set "AI prompt" -n 5 --decode
+
+# Full rule-set snapshot restore (terminates Typinator via SIGKILL before copying disk files)
+typinator restore-snapshot 7532d3f --set "AI prompt" --dry-run
+typinator restore-snapshot 7532d3f --set "AI prompt"
 ```
 
 ---

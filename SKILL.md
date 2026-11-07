@@ -11,8 +11,8 @@ description: Use when an agent needs to inspect, search, add, update, delete, ex
 - **Source:** `https://github.com/vecyang1/typinator-cli`
 - **Author:** V
 - **Created:** 2026-08-28
-- **Updated:** 2026-09-07
-- **Version:** 1.3.1
+- **Updated:** 2026-11-07
+- **Version:** 1.6.0
 - **Review status:** `reviewed`
 
 Manage, configure, query, export, import, and audit Typinator expansion rules on macOS programmatically without manual UI interaction.
@@ -71,6 +71,30 @@ typinator audit --set "AI prompt"
 
 # Auto-fix invisible control characters across all rules
 typinator audit --fix
+
+# Restart Typinator (recovers frozen, hung, or unresponsive app state)
+typinator restart
+typinator restart --force --json
+
+# List hourly Git backup snapshots from $TYPINATOR_SYNC_REPO (use --decode to see rule changes)
+typinator snapshots --set "AI prompt" -n 10
+typinator snapshots --set "AI prompt" -n 5 --decode
+
+# Trace complete Time Machine version history of any rule across all Git commits & local mutation journal
+typinator trace "wc⇧" --set "AI prompt"
+typinator history "mbb⇧" --set "AI prompt"
+
+# Compare decoded binary .tyset rules between two commits or between HEAD and LIVE disk
+typinator diff 7532d3f 21ae618 --set "AI prompt"
+typinator diff HEAD LIVE --set "AI prompt"
+
+# Surgical single-rule Time Machine recovery (restores ONLY one rule via OSA without restarting Typinator)
+typinator restore-rule 7532d3f "AI prompt" "wc⇧" --dry-run
+typinator restore-rule 7532d3f "AI prompt" "wc⇧"
+
+# Preview or restore an entire rule set from a Git snapshot (uses SIGKILL before disk copy)
+typinator restore-snapshot <commit> --set "AI prompt" --dry-run
+typinator restore-snapshot <commit> --set "AI prompt"
 ```
 
 ---
@@ -90,3 +114,6 @@ typinator audit --fix
 3. **Execution Sandbox**: Calls to `osascript` targeting running GUI applications require outside-sandbox execution (`BypassSandbox: true`) on macOS.
 4. **Dynamic Reference Precaution**: Before configuring a dynamic alias `{"<target>"}`, ensure `<target>` is unique across all active sets. `typinator audit` and CLI mutation commands will alert on ambiguous or dangling targets.
 5. **Prefix Collision Verification (`typinator debug <abbr>`)**: If a shorter prefix (e.g. `img`) exists in a higher-priority set without whole-word constraints, longer triggers starting with that prefix (e.g. `img⇧`) are automatically disabled by Typinator (`Disabled by "img" of set "Midjourney"`). Always run `typinator debug <abbr>` to preflight triggers before adding or modifying them.
+6. **Git Snapshot Recovery & SIGKILL Invariant (`typinator snapshots` / `typinator restore-snapshot`)**: Hourly binary `.tyset` backups live in `$TYPINATOR_SYNC_REPO` (driven by `com.vec.typinator-sync.plist`). Long expansions (>250B) are stored in external `X...` payload files inside `<Set>.tyset/`. When restoring from a Git commit, always use `typinator restore-snapshot <commit> [--set <set>]`, which terminates Typinator via `SIGKILL` (`killall -9 Typinator`) *before* syncing `.tyset` files on disk so Typinator's graceful shutdown save (`SAVE started`) cannot overwrite restored files with stale in-memory state. For single-rule recovery without restarting Typinator or overwriting newer sibling rules, prefer `typinator restore-rule <commit> <set> <abbr>`.
+7. **Top-Right Search Filter Illusion in Typinator UI**: When a search filter is active in Typinator's top-right search bar (`Q <query>`), the left sidebar displays only the count of matching rules per set (e.g. `AI prompt: 4` instead of `143`). Always verify true rule counts via `typinator list-sets` before assuming rules were mass-deleted.
+8. **Never Launch Typinator Yourself (Silent Operation)**: Typinator opens its main window on every launch (its `Open Window at Start` preference), and `open -a`, `open -g -j`, `tell application "Typinator" to activate`, or an osascript call while the app is quit all show it. Let the CLI launch it: `typinator restart`, or any rule command, launches with a one-launch override that keeps the window closed and focus unchanged. Only `typinator quick-search` is visible, by design.

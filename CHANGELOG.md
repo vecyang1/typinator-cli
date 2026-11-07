@@ -5,6 +5,46 @@ All notable changes to the `typinator-cli` project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-11-07
+
+### Added
+- **Pure-Python Offline `.tyset` Binary Decoder & Time Machine Version Trace (`typinator trace`, `typinator diff`, `typinator restore-rule`)**:
+  - Reverse-engineered Typinator's binary obfuscation cipher (`+[Abbreviation prepareArchiveData:]` at `0x100016573` in Typinator 9.2: involutory LCG byte-stream XOR cipher seeded with `len(data) & 0xFF`) and dual `NSKeyedArchiver` (`bplist00`) + legacy `NSArchiver` (`streamtyped`) payload formats.
+  - Added `typinator trace <abbr> [--set <set>] [-n <limit>] [--json]` (alias `typinator history`): walks historical Git commits in `$TYPINATOR_SYNC_REPO`, decodes `.tyset/Index` and `.tyset/X...` blobs in memory without touching running Typinator, and prints every historical version transition plus local mutation journal entries.
+  - Added `typinator diff [<ref_a>] [<ref_b>] [--set <set>] [--json]`: decodes `.tyset` rules between any two Git commits or `HEAD` vs `LIVE` disk and prints human-readable rule-level diffs (`+ ADDED`, `- DELETED`, `~ MODIFIED`).
+  - Added `typinator restore-rule <commit> <set> <abbr> [--dry-run] [--json]`: surgical single-rule Time Machine recovery that extracts one rule from `<commit>` and restores ONLY that rule into live Typinator via AppleScript OSA (`set_rule_expansion` or `add_rule`) with zero app restart and zero overwrite of sibling rules.
+  - Added automatic **Pre-Mutation Local Journal** (`~/.config/typinator/time-machine/mutations.jsonl`) inside `add_rule`, `set_rule_expansion`, and `delete_rule`.
+  - Added `--decode` flag to `typinator snapshots` and hooked `trace_changes.py summary-staged` into `typinator-sync/sync.sh` so hourly cloud backup commits to `vecyang1/typinator-sync` automatically include human-readable rule change tags (`[AI prompt: ~wc⇧, +mbb⇧]`).
+
+## [1.5.0] - 2026-11-07
+
+### Added
+- **Git Snapshot Inspection & Safe Recovery (`typinator snapshots` & `typinator restore-snapshot`)**:
+  - Integrated `typinator-cli` directly with the hourly Git backup mirror (`$TYPINATOR_SYNC_REPO`, managed by `com.vec.typinator-sync.plist`).
+  - Added `typinator snapshots [-n LIMIT] [--set SET] [--json]` to inspect commit history and modified `.tyset` / `X...` external payload files.
+  - Added `typinator restore-snapshot <commit> [--set SET] [--dry-run] [--json]` with checksum-based dry-run preview (`rsync -anic --no-times`) and the **SIGKILL Pre-Copy Invariant** (`killall -9 Typinator` before disk copy so Typinator's graceful shutdown `SAVE started` does not overwrite restored `.tyset` files with stale in-memory state).
+  - Recovered `wc⇧` (`X3EF1387A` in `AI prompt.tyset`) from snapshot `7532d3f` (`2026-11-07 11:09:25`) while preserving morning updates to `mbb⇧` (`X7DCF4D7E`).
+
+### Fixed
+- **The CLI no longer pops Typinator's main window (T-008)**. Typinator opens its
+  main window on every launch while its `Open Window at Start` preference is on,
+  and `open -g -j` does not prevent that. Every launch now goes through
+  `launch_typinator_quietly()`, which runs
+  `open -g -j -a /Applications/Typinator.app --args "-Open Window at Start" NO`
+  (a one-launch override; the saved preference is untouched).
+  - `restart` relaunches quietly instead of `open -a`.
+  - `restore-snapshot` relaunches quietly; a failed relaunch now shows up as
+    `relaunch_error` in its result instead of being swallowed.
+  - Any rule command run while Typinator is quit launches it quietly before
+    calling `osascript`, so osascript never launches it with the window.
+  - The "not running" error now names `typinator restart` instead of telling
+    the user to launch Typinator by hand.
+  - Added `tests/test_quiet_launch.py` (6 tests, with a guard that the module
+    has exactly one `open` launch site) and the hand-run live check
+    `scripts/live_check_silent_launch.sh` (proves the override still works on
+    the installed Typinator). Evidence:
+    `vault/sessions/2026-11-07-silent-cli.md`.
+
 ## [2026-10-19] - 2026-10-19
 
 ### Maintenance

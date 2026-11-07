@@ -11,12 +11,48 @@ import os
 import re
 import json
 import argparse
+import plistlib
+import shutil
+import struct
 import subprocess
+import tempfile
 import time
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 
-VERSION = "1.4.0"
+VERSION = "1.6.0"
+
+def _resolve_default_sync_repo() -> str:
+    env_val = os.environ.get("TYPINATOR_SYNC_REPO")
+    if env_val:
+        return os.path.expanduser(env_val)
+    home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(home, "Documents", "A-coding", "A-Sync", "typinator-sync"),
+        os.path.join(home, ".local", "share", "typinator-sync"),
+    ]
+    for c in candidates:
+        if os.path.isdir(os.path.join(c, ".git")):
+            return c
+    return candidates[0]
+
+
+DEFAULT_SYNC_REPO = _resolve_default_sync_repo()
+DEFAULT_LIVE_SETS = os.path.expanduser(
+    os.environ.get("TYPINATOR_SETS_DIR", os.path.join("~", "Library", "Application Support", "Typinator", "Sets"))
+)
+DEFAULT_MUTATION_LOG = os.path.expanduser(
+    os.environ.get("TYPINATOR_MUTATION_LOG", os.path.join("~", ".config", "typinator", "time-machine", "mutations.jsonl"))
+)
+
+TYPINATOR_APP_PATH = "/Applications/Typinator.app"
+
+# Typinator 9.x opens its main window on every launch while its
+# "Open Window at Start" preference is on, whoever launches it; `open -g -j`
+# does not prevent that. Passing the key in the NSUserDefaults argument domain
+# overrides it for this one launch and leaves the saved preference untouched.
+# Measured 2026-11-07, see vault/sessions/2026-11-07-silent-cli.md.
+QUIET_LAUNCH_ARGS = ["--args", "-Open Window at Start", "NO"]
 
 NESTED_REFERENCE_PATTERN = re.compile(r'\{"([^"\n]+)"\}')
 
@@ -95,7 +131,14 @@ class PrefixTrie:
 
 
 def run_applescript(script: str, timeout_sec: int = 30) -> str:
-    """Execute an AppleScript string via osascript and return stdout."""
+    """Execute an AppleScript string via osascript and return stdout.
+
+    A script that targets Typinator while the app is quit would make osascript
+    launch it, and that launch shows Typinator's main window. Launch it quietly
+    first so osascript only ever talks to a running app.
+    """
+    if 'application "Typinator"' in script and not is_typinator_running():
+        launch_typinator_quietly()
     try:
         res = subprocess.run(
             ["osascript", "-e", script],
@@ -109,7 +152,10 @@ def run_applescript(script: str, timeout_sec: int = 30) -> str:
     if res.returncode != 0:
         err = res.stderr.strip()
         if "-600" in err:
-            raise RuntimeError("Typinator application is not running. Please launch Typinator first.")
+            raise RuntimeError(
+                "Typinator is not running (or quit during the call). "
+                "Run `typinator restart` to relaunch it in the background without its window."
+            )
         if "-1728" in err:
             raise LookupError(f"Target object not found in Typinator: {err}")
         raise RuntimeError(f"AppleScript error: {err}")
@@ -133,6 +179,42 @@ def is_typinator_running() -> bool:
     """Check if Typinator is currently running on macOS."""
     res = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True)
     return res.returncode == 0
+
+
+def _typinator_pids() -> List[int]:
+    res = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True, text=True)
+    return [int(p) for p in res.stdout.split() if p.isdigit()]
+
+
+def launch_typinator_quietly(timeout_sec: float = 5.0) -> int:
+    """Launch Typinator in the background with no main window and no focus change.
+
+    The single launch site for the whole CLI. Returns the running PID. Does
+    nothing when Typinator already runs: `open` against a running app sends a
+    reopen event, and Typinator answers that by showing its main window.
+    """
+    pids = _typinator_pids()
+    if pids:
+        return pids[0]
+    if not os.path.isdir(TYPINATOR_APP_PATH):
+        raise FileNotFoundError(f"Typinator application not found at '{TYPINATOR_APP_PATH}'")
+
+    res = subprocess.run(
+        ["open", "-g", "-j", "-a", TYPINATOR_APP_PATH, *QUIET_LAUNCH_ARGS],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        raise RuntimeError(f"Failed to launch Typinator: {res.stderr.strip()}")
+
+    deadline = time.time() + timeout_sec
+    while True:
+        pids = _typinator_pids()
+        if pids:
+            return pids[0]
+        if time.time() >= deadline:
+            raise TimeoutError(f"Typinator did not start within {timeout_sec} seconds after launch.")
+        time.sleep(0.3)
 
 
 def get_status() -> Dict[str, Any]:
@@ -378,6 +460,37 @@ def get_rule(set_name: str, abbreviation: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def record_mutation_journal(
+    action: str,
+    set_name: str,
+    abbreviation: str,
+    old_rule: Optional[Dict[str, Any]] = None,
+    new_expansion: Optional[str] = None,
+    new_description: Optional[str] = None,
+    new_whole_word: Optional[bool] = None,
+    journal_path: str = DEFAULT_MUTATION_LOG
+) -> None:
+    """Append a local Time Machine pre-mutation journal entry before modifying or deleting a rule."""
+    try:
+        os.makedirs(os.path.dirname(journal_path), exist_ok=True)
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "action": action,
+            "set": set_name,
+            "abbreviation": abbreviation,
+            "old_expansion": old_rule.get("expansion") if old_rule else None,
+            "old_description": old_rule.get("description") if old_rule else None,
+            "old_whole_word": old_rule.get("whole_word") if old_rule else None,
+            "new_expansion": new_expansion,
+            "new_description": new_description,
+            "new_whole_word": new_whole_word,
+        }
+        with open(journal_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def set_rule_expansion(
     set_name: str,
     abbreviation: str,
@@ -397,6 +510,12 @@ def set_rule_expansion(
     if not updates:
         return True
 
+    old_rule = None
+    try:
+        old_rule = get_rule(set_name, abbreviation)
+    except Exception:
+        pass
+
     update_block = "\n".join(updates)
     sc = f'''
     tell application "Typinator"
@@ -406,7 +525,18 @@ def set_rule_expansion(
     end tell
     '''
     res = run_applescript(sc)
-    return bool(res)
+    ok = bool(res)
+    if ok and old_rule:
+        record_mutation_journal(
+            action="update",
+            set_name=set_name,
+            abbreviation=abbreviation,
+            old_rule=old_rule,
+            new_expansion=expansion if expansion is not None else old_rule.get("expansion"),
+            new_description=description if description is not None else old_rule.get("description"),
+            new_whole_word=whole_word if whole_word is not None else old_rule.get("whole_word"),
+        )
+    return ok
 
 
 def add_rule(
@@ -430,7 +560,18 @@ def add_rule(
         end tell
     end tell
     '''
-    return run_applescript(sc)
+    uid = run_applescript(sc)
+    if uid:
+        record_mutation_journal(
+            action="create",
+            set_name=set_name,
+            abbreviation=abbreviation,
+            old_rule=None,
+            new_expansion=expansion,
+            new_description=description,
+            new_whole_word=whole_word,
+        )
+    return uid
 
 
 def delete_rule(set_name: str, abbreviation: str) -> bool:
@@ -446,7 +587,18 @@ def delete_rule(set_name: str, abbreviation: str) -> bool:
     end tell
     '''
     res = run_applescript(sc)
-    return res == "OK"
+    ok = res == "OK"
+    if ok:
+        record_mutation_journal(
+            action="delete",
+            set_name=set_name,
+            abbreviation=abbreviation,
+            old_rule=existing,
+            new_expansion=None,
+            new_description=None,
+            new_whole_word=None,
+        )
+    return ok
 
 
 def export_rules(set_name: Optional[str] = None) -> Dict[str, Any]:
@@ -1021,7 +1173,8 @@ def restart_typinator(force: bool = False, timeout_sec: int = 5) -> Dict[str, An
     Safely restart the Typinator macOS application.
     Recovers from frozen, unresponsive, or stalled event-tap states.
     Attempts a graceful AppleScript quit first, falling back to SIGTERM/SIGKILL if
-    unresponsive or when force=True. Relaunches /Applications/Typinator.app and verifies
+    unresponsive or when force=True. Relaunches via launch_typinator_quietly() (no main
+    window, no focus change) and verifies
     clean startup.
     """
     res = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True, text=True)
@@ -1061,26 +1214,7 @@ def restart_typinator(force: bool = False, timeout_sec: int = 5) -> Dict[str, An
                     subprocess.run(["kill", "-9", str(p)], check=False)
             time.sleep(0.5)
 
-    app_path = "/Applications/Typinator.app"
-    if not os.path.exists(app_path):
-        raise FileNotFoundError(f"Typinator application not found at '{app_path}'")
-
-    launch_res = subprocess.run(["open", "-a", app_path], capture_output=True, text=True)
-    if launch_res.returncode != 0:
-        raise RuntimeError(f"Failed to launch Typinator: {launch_res.stderr.strip()}")
-
-    new_pid = None
-    start = time.time()
-    while time.time() - start < timeout_sec:
-        time.sleep(0.3)
-        chk = subprocess.run(["pgrep", "-x", "Typinator"], capture_output=True, text=True)
-        found = [int(p) for p in chk.stdout.strip().split() if p.isdigit()]
-        if found:
-            new_pid = found[0]
-            break
-
-    if not new_pid:
-        raise TimeoutError(f"Typinator failed to spawn within {timeout_sec} seconds after launch.")
+    new_pid = launch_typinator_quietly(timeout_sec=timeout_sec)
 
     time.sleep(0.5)
     status_info = get_status()
@@ -1092,6 +1226,754 @@ def restart_typinator(force: bool = False, timeout_sec: int = 5) -> Dict[str, An
         "quit_method": quit_method,
         "app_status": status_info
     }
+
+
+def decode_typinator_archive(data: bytes) -> bytes:
+    """
+    Decode (or encode) a Typinator `.tyset/Index` or `.tyset/X*` binary archive.
+    Reverse-engineered from `+[Abbreviation prepareArchiveData:]` (`0x100016573` in Typinator 9.2):
+    An involutory LCG byte-stream XOR cipher seeded with `len(data) & 0xFF`.
+    """
+    bl = len(data) & 0xFF
+    out = bytearray(data)
+    for i in range(len(out)):
+        bl = (bl * 0x5D + 1) & 0xFF
+        out[i] ^= bl
+    return bytes(out)
+
+
+def _deref_uid(objects: List[Any], val: Any) -> Any:
+    if isinstance(val, plistlib.UID):
+        idx = val.data
+        if 0 <= idx < len(objects):
+            return objects[idx]
+    return val
+
+
+def decode_x_payload(raw_bytes: bytes) -> str:
+    """
+    Decode an external `.tyset/X{exp_id:08X}` payload file into its expansion string.
+    Supports both modern `NSKeyedArchiver` (`bplist00`) and legacy `NSArchiver` (`streamtyped`).
+    """
+    if not raw_bytes:
+        return ""
+    dec = decode_typinator_archive(raw_bytes)
+    if dec.startswith(b"bplist00"):
+        try:
+            pl = plistlib.loads(dec)
+            objs = pl.get("$objects", [])
+            if len(objs) <= 1 or not isinstance(objs[1], dict):
+                return ""
+            root = objs[1]
+            keys = [_deref_uid(objs, k) for k in root.get("NS.keys", [])]
+            vals = [_deref_uid(objs, v) for v in root.get("NS.objects", [])]
+            d = dict(zip(keys, vals))
+            exp = d.get("Expansion")
+            if isinstance(exp, str):
+                return exp
+            if isinstance(exp, dict) and "NS.string" in exp:
+                return str(exp["NS.string"])
+            if "Formatted" in d:
+                return "<Formatted RTF/HTML Expansion>"
+            if "Picture" in d:
+                return "<Picture Expansion>"
+        except Exception:
+            return "<Corrupted bplist00 Expansion>"
+    elif dec.startswith(b"\x04\x0bstreamtyped"):
+        marker = b"Expansion\x86\x92"
+        idx = dec.find(marker)
+        if idx != -1:
+            sub = dec[idx + len(marker):]
+            m2 = sub.find(b"\x97\x98")
+            if m2 != -1:
+                pos = m2 + 2
+                if pos < len(sub) and sub[pos] == 0x2B:
+                    pos += 1
+                if pos < len(sub):
+                    b0 = sub[pos]
+                    if b0 < 0x80:
+                        slen = b0
+                        s_start = pos + 1
+                    elif b0 == 0x81 and pos + 3 <= len(sub):
+                        slen = struct.unpack("<H", sub[pos + 1:pos + 3])[0]
+                        s_start = pos + 3
+                    elif b0 == 0x82 and pos + 5 <= len(sub):
+                        slen = struct.unpack("<I", sub[pos + 1:pos + 5])[0]
+                        s_start = pos + 5
+                    else:
+                        slen = 0
+                        s_start = pos
+                    if slen > 0:
+                        return sub[s_start:s_start + slen].decode("utf-8", errors="replace")
+        if b"Formatted" in dec or b"NSAttributedString" in dec:
+            return "<Formatted RTF/HTML Expansion>"
+        if b"Picture" in dec or b"NSImage" in dec:
+            return "<Picture Expansion>"
+    return ""
+
+
+def parse_tyset_from_bytes(
+    index_bytes: bytes,
+    x_loader: Callable[[str], Optional[bytes]],
+    set_name: str = "",
+    only_abbreviation: Optional[str] = None
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Parse a `.tyset/Index` binary blob and resolve any external `X*` payloads via `x_loader`.
+    When `only_abbreviation` is provided, only loads the external `X*` payload for that rule
+    (making historical commit walking 100x faster).
+    Returns a dict keyed by abbreviation trigger string.
+    """
+    dec = decode_typinator_archive(index_bytes)
+    if not dec.startswith(b"bplist00"):
+        return {}
+    pl = plistlib.loads(dec)
+    objs = pl.get("$objects", [])
+    if len(objs) <= 1 or not isinstance(objs[1], dict):
+        return {}
+    root = objs[1]
+    resolved_set_name = _deref_uid(objs, root.get("name")) or set_name
+    abbr_list_obj = _deref_uid(objs, root.get("abbreviations"))
+    if not isinstance(abbr_list_obj, dict):
+        return {}
+
+    rules_by_abbr: Dict[str, Dict[str, Any]] = {}
+    for idx, item_uid in enumerate(abbr_list_obj.get("NS.objects", [])):
+        r = _deref_uid(objs, item_uid)
+        if not isinstance(r, dict):
+            continue
+        abbr_val = _deref_uid(objs, r.get("abbreviation"))
+        if isinstance(abbr_val, dict):
+            abbr_val = abbr_val.get("NS.string", "")
+        abbr_str = str(abbr_val or "")
+        if not abbr_str:
+            continue
+        if only_abbreviation is not None and abbr_str != only_abbreviation:
+            continue
+
+        exp_val = _deref_uid(objs, r.get("expansion"))
+        if isinstance(exp_val, dict):
+            exp_val = exp_val.get("NS.string", "")
+        exp_id = r.get("exp ID")
+        x_file = None
+        if exp_id:
+            x_file = f"X{int(exp_id):08X}"
+            x_raw = x_loader(x_file)
+            if x_raw is not None:
+                exp_str = decode_x_payload(x_raw)
+            else:
+                exp_str = str(exp_val or "")
+        else:
+            exp_str = str(exp_val or "")
+
+        opts_obj = _deref_uid(objs, r.get("abbrOptions"))
+        desc_str = ""
+        whole_word = False
+        if isinstance(opts_obj, dict) and "NS.keys" in opts_obj:
+            okeys = [_deref_uid(objs, k) for k in opts_obj.get("NS.keys", [])]
+            ovals = [_deref_uid(objs, v) for v in opts_obj.get("NS.objects", [])]
+            odict = dict(zip(okeys, ovals))
+            comment_val = odict.get("comment", "")
+            if isinstance(comment_val, dict):
+                comment_val = comment_val.get("NS.string", "")
+            desc_str = str(comment_val or "")
+            whole_word = bool(odict.get("wholeWord", False))
+
+        rules_by_abbr[abbr_str] = {
+            "set": str(resolved_set_name),
+            "abbreviation": abbr_str,
+            "expansion": exp_str,
+            "description": desc_str,
+            "whole_word": whole_word,
+            "exp_id": int(exp_id) if exp_id else None,
+            "x_file": x_file,
+            "rule_index": idx,
+        }
+    return rules_by_abbr
+
+
+def load_set_rules_at_ref(
+    set_name: str,
+    ref: str = "HEAD",
+    repo_dir: str = DEFAULT_SYNC_REPO,
+    live_sets_dir: str = DEFAULT_LIVE_SETS,
+    only_abbreviation: Optional[str] = None
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Load and decode rules of `set_name` either from live disk (`ref="LIVE"`)
+    or from a Git commit/ref in `repo_dir` (`ref="HEAD"`, `<sha>`, etc.).
+    """
+    set_folder = f"{set_name}.tyset" if not set_name.endswith(".tyset") else set_name
+    clean_name = set_folder[:-6] if set_folder.endswith(".tyset") else set_folder
+
+    if ref.upper() == "LIVE":
+        folder_path = os.path.join(live_sets_dir, set_folder)
+        index_path = os.path.join(folder_path, "Index")
+        if not os.path.isfile(index_path):
+            return {}
+        with open(index_path, "rb") as f:
+            index_bytes = f.read()
+
+        def _live_x_loader(x_name: str) -> Optional[bytes]:
+            xp = os.path.join(folder_path, x_name)
+            if os.path.isfile(xp):
+                with open(xp, "rb") as xf:
+                    return xf.read()
+            return None
+
+        return parse_tyset_from_bytes(
+            index_bytes, _live_x_loader, set_name=clean_name, only_abbreviation=only_abbreviation
+        )
+
+    if not os.path.isdir(os.path.join(repo_dir, ".git")):
+        raise FileNotFoundError(f"Typinator sync Git repository not found at '{repo_dir}'")
+
+    rel_dir = f"Sets/{set_folder}"
+    res_idx = subprocess.run(
+        ["git", "-C", repo_dir, "show", f"{ref}:{rel_dir}/Index"],
+        capture_output=True
+    )
+    if res_idx.returncode != 0 or not res_idx.stdout:
+        return {}
+
+    def _git_x_loader(x_name: str) -> Optional[bytes]:
+        rx = subprocess.run(
+            ["git", "-C", repo_dir, "show", f"{ref}:{rel_dir}/{x_name}"],
+            capture_output=True
+        )
+        return rx.stdout if rx.returncode == 0 else None
+
+    return parse_tyset_from_bytes(
+        res_idx.stdout, _git_x_loader, set_name=clean_name, only_abbreviation=only_abbreviation
+    )
+
+
+def list_set_names_at_ref(
+    ref: str = "HEAD",
+    repo_dir: str = DEFAULT_SYNC_REPO,
+    live_sets_dir: str = DEFAULT_LIVE_SETS
+) -> List[str]:
+    """List all `.tyset` set names available at `ref` (`LIVE` or a Git commit)."""
+    if ref.upper() == "LIVE":
+        if not os.path.isdir(live_sets_dir):
+            return []
+        return sorted(
+            d[:-6] for d in os.listdir(live_sets_dir)
+            if d.endswith(".tyset") and os.path.isdir(os.path.join(live_sets_dir, d))
+        )
+    res = subprocess.run(
+        ["git", "-C", repo_dir, "ls-tree", "--name-only", f"{ref}:Sets"],
+        capture_output=True, text=True
+    )
+    if res.returncode != 0:
+        return []
+    return sorted(
+        line.strip()[:-6] for line in res.stdout.splitlines()
+        if line.strip().endswith(".tyset")
+    )
+
+
+def diff_snapshots(
+    ref_a: str = "HEAD",
+    ref_b: str = "LIVE",
+    set_name: Optional[str] = None,
+    repo_dir: str = DEFAULT_SYNC_REPO,
+    live_sets_dir: str = DEFAULT_LIVE_SETS
+) -> Dict[str, Any]:
+    """
+    Compare decoded Typinator rules between `ref_a` (default `HEAD` in typinator-sync)
+    and `ref_b` (default `LIVE` disk sets, or another commit SHA).
+    Returns human-readable added (`+`), deleted (`-`), and modified (`~`) rules.
+    """
+    if set_name:
+        clean_set = set_name[:-6] if set_name.endswith(".tyset") else set_name
+        candidate_sets = [clean_set]
+    else:
+        if ref_a.upper() != "LIVE" and ref_b.upper() != "LIVE":
+            # Optimization: only inspect sets touched between ref_a and ref_b
+            diff_res = subprocess.run(
+                ["git", "-C", repo_dir, "diff", "--name-only", ref_a, ref_b, "--", "Sets"],
+                capture_output=True, text=True
+            )
+            touched = set()
+            for line in diff_res.stdout.splitlines():
+                parts = line.strip().split("/")
+                if len(parts) >= 2 and parts[0] == "Sets" and parts[1].endswith(".tyset"):
+                    touched.add(parts[1][:-6])
+            candidate_sets = sorted(touched)
+        else:
+            sets_a = set(list_set_names_at_ref(ref_a, repo_dir=repo_dir, live_sets_dir=live_sets_dir))
+            sets_b = set(list_set_names_at_ref(ref_b, repo_dir=repo_dir, live_sets_dir=live_sets_dir))
+            candidate_sets = sorted(sets_a | sets_b)
+
+    changes: List[Dict[str, Any]] = []
+    for s_name in candidate_sets:
+        rules_a = load_set_rules_at_ref(s_name, ref=ref_a, repo_dir=repo_dir, live_sets_dir=live_sets_dir)
+        rules_b = load_set_rules_at_ref(s_name, ref=ref_b, repo_dir=repo_dir, live_sets_dir=live_sets_dir)
+        all_abbrs = sorted(set(rules_a.keys()) | set(rules_b.keys()))
+        for abbr in all_abbrs:
+            ra = rules_a.get(abbr)
+            rb = rules_b.get(abbr)
+            if ra is None and rb is not None:
+                changes.append({
+                    "change": "added",
+                    "set": s_name,
+                    "abbreviation": abbr,
+                    "old_expansion": None,
+                    "new_expansion": rb["expansion"],
+                    "old_description": None,
+                    "new_description": rb["description"],
+                })
+            elif ra is not None and rb is None:
+                changes.append({
+                    "change": "deleted",
+                    "set": s_name,
+                    "abbreviation": abbr,
+                    "old_expansion": ra["expansion"],
+                    "new_expansion": None,
+                    "old_description": ra["description"],
+                    "new_description": None,
+                })
+            elif ra is not None and rb is not None:
+                if (
+                    ra["expansion"] != rb["expansion"]
+                    or ra["description"] != rb["description"]
+                    or ra["whole_word"] != rb["whole_word"]
+                ):
+                    changes.append({
+                        "change": "modified",
+                        "set": s_name,
+                        "abbreviation": abbr,
+                        "old_expansion": ra["expansion"],
+                        "new_expansion": rb["expansion"],
+                        "old_description": ra["description"],
+                        "new_description": rb["description"],
+                        "old_whole_word": ra["whole_word"],
+                        "new_whole_word": rb["whole_word"],
+                    })
+
+    return {
+        "ref_a": ref_a,
+        "ref_b": ref_b,
+        "set_filter": set_name,
+        "total_changes": len(changes),
+        "changes": changes,
+    }
+
+
+def trace_rule_history(
+    abbreviation: str,
+    set_name: Optional[str] = None,
+    limit: int = 25,
+    repo_dir: str = DEFAULT_SYNC_REPO,
+    live_sets_dir: str = DEFAULT_LIVE_SETS,
+    journal_path: str = DEFAULT_MUTATION_LOG
+) -> Dict[str, Any]:
+    """
+    Walk the Time Machine Git history in `typinator-sync` (plus live disk state and
+    local pre-mutation journal) to reconstruct the complete version timeline of `abbreviation`.
+    """
+    if not os.path.isdir(os.path.join(repo_dir, ".git")):
+        raise FileNotFoundError(f"Typinator sync Git repository not found at '{repo_dir}'")
+
+    target_sets: List[str] = []
+    if set_name:
+        clean_set = set_name[:-6] if set_name.endswith(".tyset") else set_name
+        target_sets = [clean_set]
+    else:
+        # Discover which set(s) currently or historically contain `abbreviation`
+        for s_name in list_set_names_at_ref("LIVE", repo_dir=repo_dir, live_sets_dir=live_sets_dir):
+            rules = load_set_rules_at_ref(
+                s_name, ref="LIVE", repo_dir=repo_dir, live_sets_dir=live_sets_dir, only_abbreviation=abbreviation
+            )
+            if abbreviation in rules:
+                target_sets.append(s_name)
+        if not target_sets:
+            for s_name in list_set_names_at_ref("HEAD", repo_dir=repo_dir, live_sets_dir=live_sets_dir):
+                rules = load_set_rules_at_ref(
+                    s_name, ref="HEAD", repo_dir=repo_dir, live_sets_dir=live_sets_dir, only_abbreviation=abbreviation
+                )
+                if abbreviation in rules:
+                    target_sets.append(s_name)
+        if not target_sets:
+            # Fallback: scan all sets in HEAD
+            target_sets = list_set_names_at_ref("HEAD", repo_dir=repo_dir, live_sets_dir=live_sets_dir)
+
+    history_by_set: Dict[str, List[Dict[str, Any]]] = {}
+
+    for s_name in target_sets:
+        rel_set = f"Sets/{s_name}.tyset"
+        log_res = subprocess.run(
+            ["git", "-C", repo_dir, "log", "--pretty=format:%H\t%h\t%ci\t%s", "--", rel_set],
+            capture_output=True, text=True
+        )
+        if log_res.returncode != 0 or not log_res.stdout.strip():
+            continue
+
+        commits = []
+        for line in log_res.stdout.strip().splitlines():
+            parts = line.split("\t", 3)
+            if len(parts) == 4:
+                commits.append(parts)
+
+        # Walk oldest-to-newest so we accurately record every state transition
+        versions: List[Dict[str, Any]] = []
+        prev_state: Optional[Tuple[Optional[str], Optional[str], Optional[bool]]] = None
+
+        for full_sha, short_sha, cdate, subj in reversed(commits):
+            rules = load_set_rules_at_ref(
+                s_name, ref=full_sha, repo_dir=repo_dir, live_sets_dir=live_sets_dir, only_abbreviation=abbreviation
+            )
+            r = rules.get(abbreviation)
+            if r is None:
+                curr_state = (None, None, None)
+            else:
+                curr_state = (r["expansion"], r["description"], r["whole_word"])
+
+            if curr_state != prev_state:
+                if curr_state == (None, None, None):
+                    if prev_state is not None:
+                        versions.append({
+                            "source": "git",
+                            "commit": full_sha,
+                            "short_commit": short_sha,
+                            "date": cdate,
+                            "subject": subj,
+                            "event": "deleted",
+                            "set": s_name,
+                            "abbreviation": abbreviation,
+                            "expansion": None,
+                            "description": None,
+                            "whole_word": None,
+                            "x_file": None,
+                        })
+                else:
+                    event_type = "created" if prev_state in (None, (None, None, None)) else "modified"
+                    versions.append({
+                        "source": "git",
+                        "commit": full_sha,
+                        "short_commit": short_sha,
+                        "date": cdate,
+                        "subject": subj,
+                        "event": event_type,
+                        "set": s_name,
+                        "abbreviation": abbreviation,
+                        "expansion": r["expansion"],
+                        "description": r["description"],
+                        "whole_word": r["whole_word"],
+                        "x_file": r.get("x_file"),
+                    })
+                prev_state = curr_state
+
+        # Also check LIVE disk state vs latest Git state
+        live_rules = load_set_rules_at_ref(
+            s_name, ref="LIVE", repo_dir=repo_dir, live_sets_dir=live_sets_dir, only_abbreviation=abbreviation
+        )
+        lr = live_rules.get(abbreviation)
+        live_state = (lr["expansion"], lr["description"], lr["whole_word"]) if lr else (None, None, None)
+        if live_state != prev_state and (lr is not None or prev_state is not None):
+            versions.append({
+                "source": "live_disk",
+                "commit": "LIVE",
+                "short_commit": "LIVE",
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S (unsynced live)"),
+                "subject": "Live ~/Library/Application Support/Typinator/Sets",
+                "event": "deleted_live" if lr is None else ("created_live" if prev_state in (None, (None, None, None)) else "modified_live"),
+                "set": s_name,
+                "abbreviation": abbreviation,
+                "expansion": lr["expansion"] if lr else None,
+                "description": lr["description"] if lr else None,
+                "whole_word": lr["whole_word"] if lr else None,
+                "x_file": lr.get("x_file") if lr else None,
+            })
+
+        if versions:
+            # Return newest-first, capped at `limit`
+            history_by_set[s_name] = list(reversed(versions))[:max(1, int(limit))]
+
+    journal_entries: List[Dict[str, Any]] = []
+    if os.path.isfile(journal_path):
+        try:
+            with open(journal_path, "r", encoding="utf-8") as jf:
+                for line in jf:
+                    if not line.strip():
+                        continue
+                    item = json.loads(line)
+                    if item.get("abbreviation") == abbreviation and (not set_name or item.get("set") == set_name):
+                        journal_entries.append(item)
+        except Exception:
+            pass
+
+    return {
+        "abbreviation": abbreviation,
+        "set_filter": set_name,
+        "sets": history_by_set,
+        "local_mutation_journal": list(reversed(journal_entries))[:max(1, int(limit))],
+    }
+
+
+def restore_single_rule(
+    commit: str,
+    set_name: str,
+    abbreviation: str,
+    dry_run: bool = False,
+    repo_dir: str = DEFAULT_SYNC_REPO,
+    live_sets_dir: str = DEFAULT_LIVE_SETS
+) -> Dict[str, Any]:
+    """
+    Surgical single-rule Time Machine recovery:
+    Decodes `<abbreviation>` from `<commit>` in `typinator-sync` for `<set_name>`
+    and restores ONLY that rule into live Typinator via AppleScript OSA (`set_rule_expansion`
+    or `add_rule`), with zero app restart and zero overwrite of newer sibling rules in the set.
+    """
+    clean_set = set_name[:-6] if set_name.endswith(".tyset") else set_name
+    rules_at_commit = load_set_rules_at_ref(
+        clean_set, ref=commit, repo_dir=repo_dir, live_sets_dir=live_sets_dir, only_abbreviation=abbreviation
+    )
+    if abbreviation not in rules_at_commit:
+        raise LookupError(
+            f"Rule '{abbreviation}' not found in set '{clean_set}' at snapshot '{commit}'."
+        )
+
+    target_rule = rules_at_commit[abbreviation]
+    live_existing = None
+    if is_typinator_running():
+        try:
+            live_existing = get_rule(clean_set, abbreviation)
+        except Exception:
+            live_existing = None
+    if live_existing is None:
+        live_disk_rules = load_set_rules_at_ref(
+            clean_set, ref="LIVE", repo_dir=repo_dir, live_sets_dir=live_sets_dir, only_abbreviation=abbreviation
+        )
+        live_existing = live_disk_rules.get(abbreviation)
+
+    result = {
+        "status": "dry_run" if dry_run else "restored",
+        "commit": commit,
+        "set": clean_set,
+        "abbreviation": abbreviation,
+        "operation": "update_existing" if live_existing else "recreate_deleted",
+        "before_expansion": live_existing.get("expansion") if live_existing else None,
+        "restored_expansion": target_rule["expansion"],
+        "restored_description": target_rule["description"],
+        "restored_whole_word": target_rule["whole_word"],
+        "x_file": target_rule.get("x_file"),
+    }
+
+    if dry_run:
+        return result
+
+    existing_osa = get_rule(clean_set, abbreviation)
+    if existing_osa:
+        set_rule_expansion(
+            clean_set,
+            abbreviation,
+            expansion=target_rule["expansion"],
+            description=target_rule["description"],
+            whole_word=target_rule["whole_word"],
+        )
+    else:
+        add_rule(
+            clean_set,
+            abbreviation,
+            expansion=target_rule["expansion"],
+            description=target_rule["description"],
+            whole_word=target_rule["whole_word"],
+        )
+
+    return result
+
+
+def list_snapshots(
+    limit: int = 15,
+    set_name: Optional[str] = None,
+    decode: bool = False,
+    repo_dir: str = DEFAULT_SYNC_REPO
+) -> List[Dict[str, Any]]:
+    """
+    List recent Git backup snapshots from the Typinator sync repository
+    ($TYPINATOR_SYNC_REPO).
+    When `decode=True`, also decodes `.tyset` diffs against `commit~1` to list exact rule changes.
+    """
+    if not os.path.isdir(os.path.join(repo_dir, ".git")):
+        raise FileNotFoundError(f"Typinator sync Git repository not found at '{repo_dir}'")
+
+    cmd = [
+        "git", "-C", repo_dir, "log",
+        f"-n{max(1, int(limit))}",
+        "--pretty=format:===COMMIT===%H\t%h\t%ci\t%s",
+        "--name-status"
+    ]
+    if set_name:
+        target_rel = f"Sets/{set_name}.tyset" if not set_name.endswith(".tyset") else f"Sets/{set_name}"
+        cmd.extend(["--", target_rel])
+
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"Git log failed: {res.stderr.strip()}")
+
+    snapshots: List[Dict[str, Any]] = []
+    for block in res.stdout.split("===COMMIT==="):
+        block = block.strip()
+        if not block:
+            continue
+        lines = block.splitlines()
+        header = lines[0].split("\t", 3)
+        if len(header) < 4:
+            continue
+        full_sha, short_sha, commit_date, subject = header
+        files = []
+        for line in lines[1:]:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                files.append({"status": parts[0], "path": parts[1]})
+        snap_item: Dict[str, Any] = {
+            "commit": full_sha,
+            "short_commit": short_sha,
+            "date": commit_date,
+            "subject": subject,
+            "changed_files": files
+        }
+        if decode:
+            try:
+                diff_info = diff_snapshots(
+                    ref_a=f"{full_sha}~1",
+                    ref_b=full_sha,
+                    set_name=set_name,
+                    repo_dir=repo_dir
+                )
+                snap_item["rule_changes"] = diff_info.get("changes", [])
+            except Exception:
+                snap_item["rule_changes"] = []
+        snapshots.append(snap_item)
+    return snapshots
+
+
+def restore_snapshot(
+    commit: str,
+    set_name: Optional[str] = None,
+    dry_run: bool = False,
+    repo_dir: str = DEFAULT_SYNC_REPO,
+    live_sets_dir: str = DEFAULT_LIVE_SETS
+) -> Dict[str, Any]:
+    """
+    Safely restore a specific rule set (or all sets) from a Git commit in the
+    Typinator sync repository.
+
+    Critical Invariant:
+    When applying a restore to live `.tyset` files, Typinator MUST be terminated
+    via SIGKILL (`killall -9 Typinator`) BEFORE copying files on disk. Graceful
+    quit triggers Typinator's shutdown save (`SAVE started`), which overwrites
+    restored `.tyset` files with the stale in-memory model.
+    """
+    if not os.path.isdir(os.path.join(repo_dir, ".git")):
+        raise FileNotFoundError(f"Typinator sync Git repository not found at '{repo_dir}'")
+
+    verify = subprocess.run(
+        ["git", "-C", repo_dir, "rev-parse", "--verify", f"{commit}^{{commit}}"],
+        capture_output=True, text=True
+    )
+    if verify.returncode != 0:
+        raise ValueError(f"Commit '{commit}' not found in '{repo_dir}'")
+    resolved_commit = verify.stdout.strip()
+
+    set_folder = None
+    if set_name:
+        set_folder = f"{set_name}.tyset" if not set_name.endswith(".tyset") else set_name
+
+    with tempfile.TemporaryDirectory(prefix="typinator-restore-") as tmp_dir:
+        archive_paths = ["Sets"] if not set_folder else [f"Sets/{set_folder}", "Sets/Set Mark"]
+        archive_proc = subprocess.Popen(
+            ["git", "-C", repo_dir, "archive", resolved_commit, "--"] + archive_paths,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        tar_proc = subprocess.Popen(
+            ["tar", "-x", "-C", tmp_dir],
+            stdin=archive_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        if archive_proc.stdout:
+            archive_proc.stdout.close()
+        _, tar_err = tar_proc.communicate()
+        archive_err = archive_proc.stderr.read().decode("utf-8", errors="replace") if archive_proc.stderr else ""
+        if archive_proc.wait() != 0 or tar_proc.returncode != 0:
+            raise RuntimeError(f"Failed to extract snapshot '{resolved_commit}': {archive_err} {tar_err.decode('utf-8', errors='replace')}".strip())
+
+        extracted_sets = os.path.join(tmp_dir, "Sets")
+        if set_folder:
+            src_dir = os.path.join(extracted_sets, set_folder)
+            dst_dir = os.path.join(live_sets_dir, set_folder)
+            if not os.path.isdir(src_dir):
+                raise FileNotFoundError(f"Rule set '{set_folder}' not found in commit '{resolved_commit[:7]}'")
+        else:
+            src_dir = extracted_sets
+            dst_dir = live_sets_dir
+
+        os.makedirs(dst_dir, exist_ok=True)
+        dry_cmd = [
+            "rsync", "-anic", "--no-times", "--delete", "--exclude=.DS_Store",
+            f"{src_dir}/", f"{dst_dir}/"
+        ]
+        dry_res = subprocess.run(dry_cmd, capture_output=True, text=True, check=True)
+        diff_lines = [
+            l for l in dry_res.stdout.splitlines()
+            if l.strip() and not l.startswith(".f") and not l.startswith(".d")
+        ]
+
+        if dry_run:
+            return {
+                "status": "dry_run",
+                "commit": resolved_commit,
+                "set": set_name or "ALL",
+                "diff_lines": diff_lines,
+                "changed_count": len(diff_lines)
+            }
+
+        # 1. Force-kill Typinator so in-memory state cannot overwrite restored disk files on quit
+        subprocess.run(["killall", "-9", "Typinator"], capture_output=True)
+        time.sleep(0.8)
+
+        # 2. Apply rsync from extracted commit snapshot to live Sets
+        apply_cmd = [
+            "rsync", "-a", "--delete", "--omit-dir-times", "--exclude=.DS_Store",
+            f"{src_dir}/", f"{dst_dir}/"
+        ]
+        subprocess.run(apply_cmd, capture_output=True, text=True, check=True)
+
+        extracted_mark = os.path.join(extracted_sets, "Set Mark")
+        if os.path.isfile(extracted_mark):
+            shutil.copy2(extracted_mark, os.path.join(live_sets_dir, "Set Mark"))
+
+        # 3. Relaunch Typinator in the background without its main window.
+        # The restored files are already on disk, so a failed relaunch must not
+        # abort the backup sync below; it is reported in the result instead.
+        relaunch_error = None
+        try:
+            launch_typinator_quietly(timeout_sec=4.5)
+        except (OSError, RuntimeError) as exc:
+            relaunch_error = str(exc)
+        time.sleep(1.0)
+
+        # 4. Sync backup repository if sync.sh exists so HEAD matches restored state
+        sync_script = os.path.join(repo_dir, "sync.sh")
+        if os.path.isfile(sync_script) and os.access(sync_script, os.X_OK):
+            subprocess.run([sync_script], capture_output=True, text=True, check=False)
+
+        return {
+            "status": "restored",
+            "commit": resolved_commit,
+            "set": set_name or "ALL",
+            "diff_lines": diff_lines,
+            "changed_count": len(diff_lines),
+            "relaunch_error": relaunch_error,
+            "app_status": get_status()
+        }
 
 
 # --- CLI Interface ---
@@ -1195,6 +2077,63 @@ def main():
     )
     p_restart.add_argument("-f", "--force", action="store_true", help="Force immediate SIGKILL without attempting graceful quit")
     p_restart.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # snapshots
+    p_snaps = subparsers.add_parser(
+        "snapshots",
+        help="List recent Git backup snapshots from typinator-sync repository",
+        description="List recent Git backup snapshots from $TYPINATOR_SYNC_REPO"
+    )
+    p_snaps.add_argument("-n", "--limit", type=int, default=15, help="Max commits to list (default: 15)")
+    p_snaps.add_argument("--set", help="Filter commits that modified a specific rule set (e.g. 'AI prompt')")
+    p_snaps.add_argument("--decode", action="store_true", help="Decode binary .tyset blobs to list exact rule changes per commit")
+    p_snaps.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # restore-snapshot
+    p_restore = subparsers.add_parser(
+        "restore-snapshot",
+        help="Safely restore a rule set (or all sets) from a typinator-sync Git snapshot",
+        description="Safely restore a rule set (or all sets) from a typinator-sync Git commit (uses SIGKILL before disk copy so Typinator does not overwrite restored files on quit)"
+    )
+    p_restore.add_argument("commit", help="Git commit hash or ref from typinator-sync")
+    p_restore.add_argument("--set", help="Restore only a specific rule set (e.g. 'AI prompt')")
+    p_restore.add_argument("--dry-run", action="store_true", help="Preview file changes without modifying live sets")
+    p_restore.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # trace / history
+    p_trace = subparsers.add_parser(
+        "trace",
+        aliases=["history"],
+        help="Trace complete Time Machine version history of any rule across Git snapshots and local mutation log",
+        description="Decode binary .tyset archives across historical Git commits in typinator-sync to trace every version of an abbreviation"
+    )
+    p_trace.add_argument("abbreviation", help="Rule abbreviation trigger to trace (e.g. 'wc⇧', 'mbb⇧')")
+    p_trace.add_argument("--set", help="Optional rule set name to scope the trace (e.g. 'AI prompt')")
+    p_trace.add_argument("-n", "--limit", type=int, default=25, help="Max historical state transitions to return (default: 25)")
+    p_trace.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # diff
+    p_diff = subparsers.add_parser(
+        "diff",
+        help="Decode and compare rules between two snapshots or a snapshot and LIVE disk state",
+        description="Decode binary .tyset files and compare rules between ref_a (default: HEAD) and ref_b (default: LIVE disk)"
+    )
+    p_diff.add_argument("ref_a", nargs="?", default="HEAD", help="Base Git commit/ref or LIVE (default: HEAD)")
+    p_diff.add_argument("ref_b", nargs="?", default="LIVE", help="Target Git commit/ref or LIVE (default: LIVE)")
+    p_diff.add_argument("--set", help="Filter comparison to a specific rule set (e.g. 'AI prompt')")
+    p_diff.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # restore-rule
+    p_restore_rule = subparsers.add_parser(
+        "restore-rule",
+        help="Surgical single-rule Time Machine recovery from a historical Git snapshot without restarting Typinator",
+        description="Extract a single rule from a historical commit in typinator-sync and restore ONLY that rule via OSA without overwriting sibling rules"
+    )
+    p_restore_rule.add_argument("commit", help="Git commit hash or ref from typinator-sync (e.g. '7532d3f')")
+    p_restore_rule.add_argument("set", help="Rule set name (e.g. 'AI prompt')")
+    p_restore_rule.add_argument("abbreviation", help="Rule abbreviation trigger to restore (e.g. 'wc⇧')")
+    p_restore_rule.add_argument("--dry-run", action="store_true", help="Preview before/after expansion without modifying live Typinator")
+    p_restore_rule.add_argument("--json", action="store_true", help="Output raw JSON")
 
     args = parser.parse_args()
 
@@ -1456,6 +2395,119 @@ def main():
                     print(f"  Status:       🟢 Running ({app_stat.get('total_rules', 0)} rules in {app_stat.get('enabled_rule_sets', 0)} active sets)")
                 else:
                     print(f"  Status:       ⚠️ {app_stat.get('status', 'unknown')}")
+
+        elif args.command == "snapshots":
+            snaps = list_snapshots(limit=args.limit, set_name=args.set, decode=args.decode)
+            if args.json:
+                print(json.dumps(snaps, indent=2, ensure_ascii=False))
+            else:
+                set_label = f" (Set: '{args.set}')" if args.set else ""
+                print(f"=== Typinator Backup Snapshots{set_label} ===")
+                for s in snaps:
+                    print(f"• {s['short_commit']} | {s['date']} | {s['subject']}")
+                    if args.decode and s.get("rule_changes"):
+                        for ch in s["rule_changes"]:
+                            sym = {"added": "+", "deleted": "-", "modified": "~"}.get(ch["change"], "?")
+                            exp_prev = (ch.get("new_expansion") or ch.get("old_expansion") or "").replace("\n", "↵")[:60]
+                            print(f"    [{sym}] [{ch['set']}] '{ch['abbreviation']}' ➔ {exp_prev}")
+                    else:
+                        for f in s["changed_files"]:
+                            print(f"    [{f['status']}] {f['path']}")
+
+        elif args.command == "restore-snapshot":
+            res = restore_snapshot(args.commit, set_name=args.set, dry_run=args.dry_run)
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            else:
+                if res["status"] == "dry_run":
+                    print(f"🔍 Dry Run Restore from commit {res['commit'][:7]} (Set: {res['set']}):")
+                    print(f"   Changed file entries: {res['changed_count']}")
+                    for line in res["diff_lines"]:
+                        print(f"   {line}")
+                else:
+                    print(f"✅ Restored Typinator set '{res['set']}' from commit {res['commit'][:7]} ({res['changed_count']} file delta(s)).")
+                    app_stat = res.get("app_status", {})
+                    if app_stat.get("status") == "running":
+                        print(f"   Status: 🟢 Running ({app_stat.get('total_rules', 0)} rules in {app_stat.get('enabled_rule_sets', 0)} active sets)")
+
+        elif args.command in ("trace", "history"):
+            res = trace_rule_history(args.abbreviation, set_name=args.set, limit=args.limit)
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            else:
+                print(f"=== Typinator Time Machine Version Trace: '{res['abbreviation']}' ===")
+                if not res["sets"] and not res["local_mutation_journal"]:
+                    print("No historical versions found across Git snapshots or local mutation journal.")
+                for s_name, versions in res["sets"].items():
+                    print(f"\n📁 Rule Set: '{s_name}' ({len(versions)} distinct version transition(s)):")
+                    print("-" * 68)
+                    for idx, v in enumerate(versions, 1):
+                        ev = v["event"].upper()
+                        x_tag = f" [{v['x_file']}]" if v.get("x_file") else ""
+                        print(f"  #{idx} [{v['short_commit']}] {v['date']} | {ev}{x_tag}")
+                        if v.get("description"):
+                            print(f"     Description: {v['description']}")
+                        if v.get("expansion") is not None:
+                            exp_lines = v["expansion"].splitlines() or [""]
+                            print(f"     Expansion ({len(v['expansion'])} chars):")
+                            for el in exp_lines[:8]:
+                                print(f"       {el}")
+                            if len(exp_lines) > 8:
+                                print(f"       ... (+{len(exp_lines) - 8} more lines)")
+                if res["local_mutation_journal"]:
+                    print(f"\n📓 Local Pre-Mutation Journal ({len(res['local_mutation_journal'])} entry/entries):")
+                    for j in res["local_mutation_journal"]:
+                        print(f"  • {j['timestamp']} | {j['action'].upper()} [{j['set']}] '{j['abbreviation']}'")
+                        if j.get("old_expansion") is not None:
+                            print(f"    Before: {j['old_expansion'][:80].replace(chr(10), '↵')}")
+                        if j.get("new_expansion") is not None:
+                            print(f"    After:  {j['new_expansion'][:80].replace(chr(10), '↵')}")
+
+        elif args.command == "diff":
+            res = diff_snapshots(ref_a=args.ref_a, ref_b=args.ref_b, set_name=args.set)
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            else:
+                set_label = f" (Set: '{args.set}')" if args.set else ""
+                print(f"=== Typinator Decoded Rule Diff: {res['ref_a']} ➔ {res['ref_b']}{set_label} ===")
+                print(f"Total Rule Changes: {res['total_changes']}")
+                print("-" * 68)
+                for ch in res["changes"]:
+                    sym = {"added": "+ ADDED", "deleted": "- DELETED", "modified": "~ MODIFIED"}.get(ch["change"], ch["change"])
+                    print(f"{sym} [{ch['set']}] '{ch['abbreviation']}'")
+                    if ch["change"] == "added":
+                        if ch.get("new_description"):
+                            print(f"  + Desc: {ch['new_description']}")
+                        print(f"  + Exp:  {(ch.get('new_expansion') or '').replace(chr(10), '↵')}")
+                    elif ch["change"] == "deleted":
+                        if ch.get("old_description"):
+                            print(f"  - Desc: {ch['old_description']}")
+                        print(f"  - Exp:  {(ch.get('old_expansion') or '').replace(chr(10), '↵')}")
+                    else:
+                        if ch.get("old_description") != ch.get("new_description"):
+                            print(f"  - Desc: {ch.get('old_description')}")
+                            print(f"  + Desc: {ch.get('new_description')}")
+                        print(f"  - Before: {(ch.get('old_expansion') or '').replace(chr(10), '↵')}")
+                        print(f"  + After:  {(ch.get('new_expansion') or '').replace(chr(10), '↵')}")
+
+        elif args.command == "restore-rule":
+            res = restore_single_rule(
+                args.commit,
+                args.set,
+                args.abbreviation,
+                dry_run=args.dry_run
+            )
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            else:
+                mode_tag = "🔍 [DRY RUN]" if res["status"] == "dry_run" else "✅ [RESTORED]"
+                print(f"{mode_tag} Single-Rule Time Machine Recovery ({res['operation']}):")
+                print(f"  Commit:       {res['commit']}")
+                print(f"  Rule Set:     {res['set']}")
+                print(f"  Abbreviation: {res['abbreviation']}")
+                if res.get("before_expansion") is not None:
+                    print(f"  Before:       {res['before_expansion'].replace(chr(10), '↵')}")
+                print(f"  Restored:     {res['restored_expansion'].replace(chr(10), '↵')}")
 
     except (LookupError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)

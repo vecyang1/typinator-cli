@@ -9,10 +9,10 @@
 
 - What this app does: High-performance command-line interface & automation harness for Typinator text expansion on macOS.
 - Primary users: macOS power users, command-line developers, autonomous AI agents.
-- Core jobs: Sub-second rule search (<0.4s for 4,400+ rules), live in-memory updates, batch JSON export/import, safety auditing for invisible control characters (\u2028), toggle rule sets.
+- Core jobs: Sub-second rule search (<0.4s for 4,400+ rules), live in-memory updates, batch JSON export/import, safety auditing for invisible control characters (\u2028), toggle rule sets, offline `.tyset` binary decoding, and Time Machine version trace/diff/recovery (`trace`, `diff`, `restore-rule`, `snapshots`, `restore-snapshot`).
 - Out of scope: GUI management (Typinator owns the UI), non-macOS platforms (relies on macOS OSA).
-- Current phase: Production (v1.1.0)
-- last_verified: 2026-09-06
+- Current phase: Production (v1.6.0)
+- last_verified: 2026-11-07
 
 ## System Diagram
 
@@ -31,10 +31,12 @@ flowchart LR
 | --- | --- | --- | --- | --- | --- |
 | CLI Parser & Dispatch | Argument parsing and subcommands | `sys.argv` | Terminal stdout / JSON | `main()` | `scripts/typinator_cli.py` |
 | OSA IPC Bridge | AppleScript execution & string escaping | AppleScript templates | `osascript` subprocess | `run_applescript()`, `escape_as()` | `scripts/typinator_cli.py` |
+| App Launch Chokepoint | The only place the CLI launches Typinator: background, hidden, with the one-launch `Open Window at Start = NO` override so no window appears (D-005) | `pgrep -x Typinator` | `open -g -j -a … --args` | `launch_typinator_quietly()` (used by `run_applescript`, `restart_typinator`, `restore_snapshot`); guarded by `tests/test_quiet_launch.py`; live proof `scripts/live_check_silent_launch.sh` | `scripts/typinator_cli.py` |
 | Bulk Rule Table Streaming | Sub-second high-speed bulk query | `rule table of aSet` | Parsed rule dictionaries | `search_rules()` | `scripts/typinator_cli.py` |
 | Mutation & Lifecycle | Single-rule additions, updates, toggles, deletions | Live rule state | Typinator in-memory objects | `add_rule()`, `set_rule_expansion()`, `delete_rule()`, `toggle_set()` | `scripts/typinator_cli.py` |
 | Audit & Hygiene | Detecting invisible Unicode (\u2028) & trigger collisions | Rule expansions & triggers | Cleaned expansions | `audit_rules()` | `scripts/typinator_cli.py` |
 | Backup & Migration | JSON export and import with overwrite support | JSON payload / live rules | File / Typinator rules | `export_rules()`, `import_rules()` | `scripts/typinator_cli.py` |
+| Time Machine & Binary `.tyset` Decoder | Offline decoding of `.tyset/Index` and `.tyset/X*` archives (`+[Abbreviation prepareArchiveData:]`), historical version tracing, snapshot diffs, pre-mutation journaling, and surgical single-rule or full-set recovery | `$TYPINATOR_SYNC_REPO` Git commits, live `.tyset` files, `~/.config/typinator/time-machine/mutations.jsonl` | Live Typinator rules (via OSA) or disk `.tyset` files (with `SIGKILL` pre-copy guard) | `decode_typinator_archive()`, `decode_x_payload()`, `trace_rule_history()`, `diff_snapshots()`, `restore_single_rule()`, `list_snapshots()`, `restore_snapshot()` | `scripts/typinator_cli.py` |
 
 ## Data And Storage
 
